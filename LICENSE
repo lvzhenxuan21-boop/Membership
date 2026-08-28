@@ -1,0 +1,23 @@
+Proprietary License - Membership Pro
+
+Copyright (c) 2026 Membership Pro. All rights reserved.
+
+本软件为商业授权软件（Proprietary Software），仅供付费购买者使用。
+
+允许：
+- 购买者在自有/客户项目中部署、修改、二次开发
+- 为终端客户提供 SaaS 服务（多租户模式）
+
+禁止：
+- 未经授权二次转售、分享、开源源码
+- 上传至公共仓库、网盘、论坛等公开渠道
+- 移除或篡改版权标识后宣称为自有作品
+
+购买即视为同意本协议。违者追究法律责任。
+
+如需 OEM / 白标 / 转售授权，请联系作者另行签署授权协议。
+
+----
+This is NOT an open-source license. MIT components (Laravel, Filament, Spatie)
+retain their original licenses; this license covers the Membership Pro application
+code and database design on top of them.
