@@ -4,7 +4,7 @@
 
 ![Laravel](https://img.shields.io/badge/Laravel-13.26-red) ![PHP](https://img.shields.io/badge/PHP-8.3-blue) ![Filament](https://img.shields.io/badge/Filament-5.7-orange) ![License](https://img.shields.io/badge/License-Proprietary-yellow)
 
-> 🌐 **在线演示（47.99.35.208 已上线）**：**商城** <http://47.99.35.208/> · **后台** <http://47.99.35.208/admin>（`tenant@demo.com / 12345678`）· **健康检查** <http://47.99.35.208/api/v1/health> · **API** `http://47.99.35.208/api/v1/membership/plans?tenant_id=1`
+> 🌐 **在线演示（https://fenshen66.xyz 已上线）**：**商城** <https://fenshen66.xyz/> · **后台** <https://fenshen66.xyz/admin>（`tenant@demo.com / 12345678`）· **健康检查** <https://fenshen66.xyz/api/v1/health> · **API** `https://fenshen66.xyz/api/v1/membership/plans?tenant_id=1`
 
 基于 GitHub 高星项目优点聚合（spatie/laravel-permission 12k★、laratrust、soulbscription、laragym 等），单库支撑 **SaaS 多租户售卖**：商户/门店/等级/权益/套餐/订阅/积分/储值/优惠券/考勤/审计 全闭环。
 
