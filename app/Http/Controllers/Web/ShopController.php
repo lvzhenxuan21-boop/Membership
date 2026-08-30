@@ -36,7 +36,10 @@ class ShopController extends Controller
             $demoStore = \App\Models\Tenant::where('slug', 'demo')->where('status', 'active')->first() ?? $stores->first();
             // Hero 预览卡展示在售商品实图
             $samples = \App\Models\Product::with('shop')->where('status', 'on_sale')->whereNotNull('cover')->orderByDesc('sales')->take(3)->get();
-            return view('landing', compact('stores', 'storeCount', 'demoStore', 'samples'));
+            // 「示例店铺」入口：优先用线上演示地址（.env MEMBERSHIP_DEMO_STORE_URL），否则本地 demo 店
+            $demoUrl = config('membership.demo_store_url') ?: ($demoStore ? '/shop/'.$demoStore->slug : null);
+            $demoLabel = $demoUrl ? str_replace(['https://', 'http://'], '', $demoUrl) : null;
+            return view('landing', compact('stores', 'storeCount', 'demoStore', 'samples', 'demoUrl', 'demoLabel'));
         }
 
         $shops = Shop::where('tenant_id', $tenant->id)->where('status', 'active')->get();

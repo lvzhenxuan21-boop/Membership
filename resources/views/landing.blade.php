@@ -27,7 +27,7 @@
             </p>
             <div class="mt-7 flex flex-wrap gap-3">
                 <a href="/tenants/register" class="h-11 px-6 inline-flex items-center gap-2 rounded-full bg-[var(--ink)] text-white font-semibold text-sm hover:bg-black transition soft">免费开店 — 30 秒开张 <span>→</span></a>
-                @if($demoStore)<a href="/shop/{{ $demoStore->slug }}" class="h-11 px-5 inline-flex items-center gap-2 rounded-full bg-white border border-[var(--line)] font-medium text-sm hover:bg-[var(--paper2)]">先逛逛示例店铺 <span class="mono text-xs opacity-50">{{ $demoStore->slug }}.xxx.com</span></a>@endif
+                @if($demoUrl)<a href="{{ $demoUrl }}" class="h-11 px-5 inline-flex items-center gap-2 rounded-full bg-white border border-[var(--line)] font-medium text-sm hover:bg-[var(--paper2)]">先逛逛示例店铺 <span class="mono text-xs opacity-50">{{ $demoLabel }}</span></a>@endif
             </div>
             <div class="mt-6 flex flex-wrap gap-3 mono text-[11px]">
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-[var(--line)]">✓ 仅 5% 交易抽佣</span>
