@@ -25,12 +25,7 @@ class PaymentController extends Controller
             'subject' => 'nullable|string|max:100',
         ]);
 
-        // 订阅类型自动取套餐价
-        if ($data['business_type']==='subscription' && !empty($data['plan_id']) && empty($data['amount'])) {
-            $plan = \App\Models\MembershipPlan::where('tenant_id',$data['tenant_id'])->findOrFail($data['plan_id']);
-            $data['amount'] = (float)$plan->price;
-            $data['subject'] = $plan->name;
-        }
+        // 订阅类型金额与标题由 PaymentService 按套餐价强制计算，客户端传入的 amount 对订阅无效（防改价）
 
         $payment = $this->svc->create(
             $data['tenant_id'],
@@ -62,13 +57,20 @@ class PaymentController extends Controller
         return response()->json(['payment'=>$payment, 'gateway'=>$gatewayData]);
     }
 
-    // 演示用：模拟支付成功（mock 渠道直接标记 paid）
+    // 演示用：模拟支付成功（仅限当前运行在 Mock 模式的渠道，防止 mock-pay 绕过真实渠道）
     public function mockPay(string $orderNo)
     {
         $payment = Payment::where('order_no',$orderNo)->firstOrFail();
         if ($payment->isPaid()) return response()->json(['ok'=>true,'already_paid'=>true,'payment'=>$payment]);
-        if ($payment->channel==='wallet') return response()->json(['ok'=>false,'message'=>'钱包支付已在创建时自动完成'], 422);
-        $payment = $this->svc->markPaid($payment);
+        $gateway = \App\Services\Payments\PaymentGatewayFactory::make($payment->channel);
+        if (!$gateway->isMockMode()) {
+            return response()->json(['ok'=>false,'message'=>"渠道 {$payment->channel} 未运行在 Mock 模式，请走真实支付流程"], 422);
+        }
+        try {
+            $payment = $this->svc->markPaid($payment);
+        } catch (\Throwable $e) {
+            return response()->json(['ok'=>false,'message'=>$e->getMessage()], 422); // 已取消/已过期等
+        }
         return response()->json(['ok'=>true,'payment'=>$payment]);
     }
 
@@ -77,7 +79,12 @@ class PaymentController extends Controller
     {
         if (!in_array($channel, ['wechat','alipay','stripe','mock'])) $channel='mock';
         try {
-            $payment = $this->svc->handleCallback($channel, $r->all(), $r->header('Stripe-Signature') ?? $r->header('stripe-signature'));
+            $payment = $this->svc->handleCallback(
+                $channel,
+                $r->all(),
+                $r->header('Stripe-Signature') ?? $r->header('stripe-signature'),
+                $r->getContent(), // 验签必须用原始请求体
+            );
             return response()->json(['ok'=>true,'payment'=>$payment]);
         } catch (\Throwable $e) {
             return response()->json(['ok'=>false,'message'=>$e->getMessage()], 422);
@@ -89,9 +96,16 @@ class PaymentController extends Controller
         return $this->callback($r, 'stripe');
     }
 
-    public function cancel(string $orderNo)
+    // 取消支付单：本人或管理员（订单业务会连带取消订单并回补库存）
+    public function cancel(Request $r, string $orderNo)
     {
         $payment = Payment::where('order_no',$orderNo)->firstOrFail();
+        // 路由无 auth:sanctum 中间件，需显式从 sanctum guard 解析 Bearer token（web session 兜底）
+        $user = $r->user('sanctum') ?? $r->user();
+        if (!$user) return response()->json(['message'=>'Unauthenticated'], 401);
+        if ($payment->user_id !== $user->id && !$user->hasAnyRole(['super_admin','admin','tenant_admin'])) {
+            return response()->json(['message'=>'无权操作该支付单'], 403);
+        }
         $payment = $this->svc->cancel($payment);
         return response()->json($payment);
     }

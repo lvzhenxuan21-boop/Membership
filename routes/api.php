@@ -57,12 +57,16 @@ Route::prefix('v1')->group(function () {
         Route::get('/', [PaymentController::class, 'list']);
         Route::get('/{orderNo}', [PaymentController::class, 'show']);
         Route::get('/{orderNo}/query', [PaymentController::class, 'query']);
-        Route::post('/{orderNo}/mock-pay', [PaymentController::class, 'mockPay']); // 演示一键付
-        Route::post('/{orderNo}/mark-paid', [PaymentController::class, 'markPaid']); // 管理员核销
+        Route::post('/{orderNo}/mock-pay', [PaymentController::class, 'mockPay']); // 演示一键付（仅 Mock 模式渠道）
         Route::post('/{orderNo}/cancel', [PaymentController::class, 'cancel']);
-        Route::post('/{orderNo}/refund', [PaymentController::class, 'refund']);
         Route::post('/callback/{channel}', [PaymentController::class, 'callback']);
         Route::post('/webhook/stripe', [PaymentController::class, 'stripeWebhook']); // Stripe 专用
+
+        // 管理员操作：需登录 token + super_admin/admin/tenant_admin 角色
+        Route::middleware(['auth:sanctum', 'role:super_admin|admin|tenant_admin'])->group(function () {
+            Route::post('/{orderNo}/mark-paid', [PaymentController::class, 'markPaid']); // 管理员核销
+            Route::post('/{orderNo}/refund', [PaymentController::class, 'refund']);
+        });
     });
     // });
 });

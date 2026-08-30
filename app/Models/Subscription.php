@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Subscription extends Model
 {
-    protected $fillable = ['tenant_id','user_id','membership_plan_id','order_no','status','trial_ends_at','starts_at','ends_at','cancelled_at','payment_method','payment_id','paid_amount','meta'];
+    protected $fillable = ['tenant_id','user_id','membership_plan_id','order_no','status','trial_ends_at','starts_at','ends_at','cancelled_at','payment_method','payment_id','payment_order_no','paid_amount','meta'];
     protected $casts = ['trial_ends_at'=>'datetime','starts_at'=>'datetime','ends_at'=>'datetime','cancelled_at'=>'datetime','meta'=>'array','paid_amount'=>'decimal:2'];
 
     public function tenant(): BelongsTo { return $this->belongsTo(Tenant::class); }

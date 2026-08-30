@@ -22,7 +22,7 @@ class MockGateway implements GatewayInterface
         ];
     }
 
-    public function verifyWebhook(array $payload, ?string $signature = null): bool
+    public function verifyWebhook(array $payload, ?string $signature = null, ?string $rawBody = null): bool
     {
         return true;
     }
@@ -36,4 +36,6 @@ class MockGateway implements GatewayInterface
     {
         return ['success' => true, 'mock' => true, 'refund_amount' => $amount ?? $payment->amount];
     }
+
+    public function isMockMode(): bool { return true; }
 }

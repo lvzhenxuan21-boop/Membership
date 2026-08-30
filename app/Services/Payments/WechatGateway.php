@@ -14,8 +14,7 @@ class WechatGateway implements GatewayInterface
 {
     public function pay(Payment $payment): array
     {
-        $mchId = config('payments.channels.wechat.mch_id');
-        if (empty($mchId) || !class_exists(\Yansongda\Pay\Pay::class)) {
+        if ($this->isMockMode()) {
             Log::warning('[WechatGateway] 未配置或未安装 yansongda/pay，降级 Mock');
             return (new MockGateway)->pay($payment);
         }
@@ -38,12 +37,17 @@ class WechatGateway implements GatewayInterface
         ];
     }
 
-    public function verifyWebhook(array $payload, ?string $signature = null): bool
+    public function verifyWebhook(array $payload, ?string $signature = null, ?string $rawBody = null): bool
     {
-        // 真实： return Pay::wechat()->verify($payload);
+        // 真实： return Pay::wechat()->verify($rawBody ?? $payload);
         return true;
     }
 
     public function query(Payment $payment): array { return ['status'=>$payment->status, 'channel'=>'wechat']; }
     public function refund(Payment $payment, ?float $amount = null): array { return ['success'=>true, 'channel'=>'wechat']; }
+    // 未配置 WECHAT_PAY_MCH_ID 或未安装 yansongda/pay 时视为 Mock 模式（与 pay() 降级条件保持一致）
+    public function isMockMode(): bool
+    {
+        return empty(config('payments.channels.wechat.mch_id')) || !class_exists(\Yansongda\Pay\Pay::class);
+    }
 }

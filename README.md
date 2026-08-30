@@ -115,10 +115,10 @@ POST /api/v1/payment                       {tenant_id,user_id,business_type,amou
 GET  /api/v1/payment?tenant_id=1&status=pending
 GET  /api/v1/payment/{orderNo}
 GET  /api/v1/payment/{orderNo}/query
-POST /api/v1/payment/{orderNo}/mock-pay    # 演示一键付
-POST /api/v1/payment/{orderNo}/mark-paid   # 管理员核销
+POST /api/v1/payment/{orderNo}/mock-pay    # 演示一键付（仅对运行在 Mock 模式的渠道生效：mock 渠道 + 未配置密钥降级的 wechat/alipay/stripe）
 POST /api/v1/payment/{orderNo}/cancel
-POST /api/v1/payment/{orderNo}/refund      {amount}
+POST /api/v1/payment/{orderNo}/mark-paid   # 管理员核销（需 Bearer token，角色 super_admin/admin/tenant_admin，先调 /api/v1/auth/login 换取）
+POST /api/v1/payment/{orderNo}/refund      {amount}（需 Bearer token，同上）
 POST /api/v1/payment/callback/{channel}    # wechat/alipay/stripe/mock
 POST /api/v1/payment/webhook/stripe        # Stripe 专用
 ```

@@ -14,7 +14,9 @@ class ManualGateway implements GatewayInterface
             'message' => '线下支付：请联系商户完成转账，管理员在后台标记为已支付',
         ];
     }
-    public function verifyWebhook(array $payload, ?string $signature = null): bool { return true; }
+    public function verifyWebhook(array $payload, ?string $signature = null, ?string $rawBody = null): bool { return true; }
     public function query(Payment $payment): array { return ['status'=>$payment->status, 'channel'=>'manual']; }
     public function refund(Payment $payment, ?float $amount = null): array { return ['success'=>true, 'channel'=>'manual']; }
+    // 线下渠道的正式流程是管理员核销（mark-paid），不走 mock-pay
+    public function isMockMode(): bool { return false; }
 }

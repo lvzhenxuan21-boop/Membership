@@ -30,6 +30,14 @@ class PaymentService
         if (!in_array($channel, PaymentGatewayFactory::channels())) $channel = 'mock';
         if ($amount === 0.0) $channel = 'mock'; // 0元直接成功
 
+        // 订阅类型金额一律以套餐价为准，忽略调用方传入金额（防改价），后续优惠券按套餐价计算
+        $plan = null;
+        if ($businessType === 'subscription' && !empty($opts['plan_id'])) {
+            $plan = MembershipPlan::where('tenant_id',$tenantId)->findOrFail($opts['plan_id']);
+            $amount = (float)$plan->price;
+            $opts['subject'] = $plan->name;
+        }
+
         // 优惠券抵扣
         $couponId = $opts['coupon_id'] ?? null;
         $discount = 0;
@@ -41,7 +49,7 @@ class PaymentService
             if ($amount === 0.0) $channel = 'mock';
         }
 
-        return DB::transaction(function () use ($tenantId,$userId,$businessType,$amount,$originalAmount,$discount,$couponId,$channel,$opts) {
+        return DB::transaction(function () use ($tenantId,$userId,$businessType,$amount,$originalAmount,$discount,$couponId,$channel,$opts,$plan) {
             $orderNo = 'PAY'.date('YmdHis').strtoupper(Str::random(6));
             $subject = $opts['subject'] ?? $this->defaultSubject($businessType, $opts);
             $payment = Payment::create([
@@ -62,9 +70,8 @@ class PaymentService
                 'expired_at' => now()->addMinutes((int) config('payments.expire_minutes',30)),
             ]);
 
-            // 若是订阅，预创建 pending 订阅并关联
-            if ($businessType === 'subscription' && !empty($opts['plan_id'])) {
-                $plan = MembershipPlan::where('tenant_id',$tenantId)->findOrFail($opts['plan_id']);
+            // 若是订阅，预创建 pending 订阅并关联（$plan 已在上方按套餐价校验加载）
+            if ($plan) {
                 $sub = Subscription::create([
                     'tenant_id'=>$tenantId,'user_id'=>$userId,'membership_plan_id'=>$plan->id,
                     'order_no'=>'SUB'.date('YmdHis').strtoupper(Str::random(6)),
@@ -108,6 +115,7 @@ class PaymentService
     public function markPaid(Payment $payment, $extra = null): Payment
     {
         if ($payment->isPaid()) return $payment;
+        if (!$payment->isPending()) throw new \RuntimeException('仅待支付订单可标记支付');
 
         return DB::transaction(function () use ($payment, $extra) {
             $payment = Payment::where('id',$payment->id)->lockForUpdate()->first();
@@ -143,7 +151,7 @@ class PaymentService
     {
         $order = \App\Models\Order::where('id', $payment->business_id)->orWhere('payment_order_no', $payment->order_no)->first();
         if (!$order) return;
-        if (in_array($order->status, ['paid','shipped','completed'])) return;
+        if (in_array($order->status, ['paid','shipped','completed','cancelled'])) return;
         $order->update(['status'=>'paid','paid_at'=>now(),'payment_channel'=>$payment->channel]);
         // 销量+1，库存已在下单时扣减
         foreach ($order->items as $item) {
@@ -178,22 +186,29 @@ class PaymentService
 
     private function handleWalletRecharge(Payment $payment): void
     {
-        $this->membershipService->walletChange($payment->tenant_id,$payment->user_id,(float)$payment->amount,'recharge',$payment->subject);
-        // 关联 wallet_transaction
-        $lastTx = \App\Models\WalletTransaction::where('order_no',$payment->order_no)->first();
-        if ($lastTx) $payment->update(['business_id'=>$lastTx->wallet_id]);
+        // 传入支付单号建立流水关联，直接用返回的流水回填 business_id（钱包ID）
+        $tx = $this->membershipService->walletChange($payment->tenant_id,$payment->user_id,(float)$payment->amount,'recharge',$payment->subject,$payment->order_no);
+        $payment->update(['business_id'=>$tx->wallet_id]);
     }
 
-    public function handleCallback(string $channel, array $payload, ?string $signature = null): Payment
+    public function handleCallback(string $channel, array $payload, ?string $signature = null, ?string $rawBody = null): Payment
     {
         $gateway = PaymentGatewayFactory::make($channel);
-        if (!$gateway->verifyWebhook($payload, $signature)) {
+        if (!$gateway->verifyWebhook($payload, $signature, $rawBody)) {
             throw new \RuntimeException('回调验签失败');
         }
-        $orderNo = $payload['order_no'] ?? $payload['out_trade_no'] ?? $payload['client_reference_id'] ?? null;
+        // 兼容多种网关：顶层字段 / Stripe 事件包一层 data.object（metadata.order_no 或 client_reference_id）
+        $obj = $payload['data']['object'] ?? [];
+        $orderNo = $payload['order_no'] ?? $payload['out_trade_no'] ?? $payload['client_reference_id']
+            ?? ($obj['metadata']['order_no'] ?? null) ?? ($obj['client_reference_id'] ?? null);
         if (!$orderNo) throw new \RuntimeException('回调缺少 order_no');
         $payment = Payment::where('order_no',$orderNo)->firstOrFail();
         if ($payment->isPaid()) return $payment;
+        // Stripe：只处理"支付成功"类事件，其余事件（退款/争议等）静默确认
+        $type = $payload['type'] ?? null;
+        if ($channel === 'stripe' && $type && !in_array($type, ['checkout.session.completed','payment_intent.succeeded'])) {
+            return $payment;
+        }
 
         $payment->update(['callback_data'=>$payload]);
         return $this->markPaid($payment);
@@ -202,7 +217,12 @@ class PaymentService
     public function query(Payment $payment): array
     {
         $gateway = PaymentGatewayFactory::make($payment->channel);
-        return $gateway->query($payment);
+        $result = $gateway->query($payment);
+        // 主动对账兜底：网关侧已支付但本单仍 pending（如 webhook 不可达时），以查询结果核销
+        if ($payment->isPending() && in_array($result['status'] ?? null, ['paid','succeeded'], true)) {
+            try { $this->markPaid($payment); } catch (\Throwable $e) { /* 过期/已取消等，忽略 */ }
+        }
+        return $result;
     }
 
     public function refund(Payment $payment, ?float $amount = null): Payment
@@ -223,11 +243,32 @@ class PaymentService
     public function cancel(Payment $payment): Payment
     {
         if (!$payment->isPending()) throw new \RuntimeException('仅待支付可取消');
-        $payment->update(['status'=>'cancelled']);
-        if ($payment->business_type==='subscription' && $payment->business_id) {
-            Subscription::where('id',$payment->business_id)->where('status','pending')->update(['status'=>'cancelled','cancelled_at'=>now()]);
+        return DB::transaction(function () use ($payment) {
+            $fresh = Payment::where('id',$payment->id)->lockForUpdate()->first();
+            if (!$fresh || !$fresh->isPending()) return $payment; // 幂等：并发下已被处理
+            $fresh->update(['status'=>'cancelled']);
+            match($fresh->business_type) {
+                'subscription' => Subscription::where('id',$fresh->business_id)->where('status','pending')->update(['status'=>'cancelled','cancelled_at'=>now()]),
+                'order' => $this->cancelOrderRestoreStock($fresh),
+                default => null,
+            };
+            return $fresh;
+        });
+    }
+
+    // 取消未支付订单并回补库存（销量在支付成功时才累计，无需回滚）
+    private function cancelOrderRestoreStock(Payment $payment): void
+    {
+        $order = \App\Models\Order::where('id',$payment->business_id)->orWhere('payment_order_no',$payment->order_no)->first();
+        if (!$order || $order->status !== 'pending') return;
+        $order->update(['status'=>'cancelled']);
+        foreach ($order->items as $item) {
+            \App\Models\Product::where('id', $item->product_id)->increment('stock', $item->quantity);
         }
-        return $payment;
+        // 退回下单时抵现扣减的积分（adjust 类型，不享受等级倍率）
+        if ((int) $order->points_used > 0) {
+            $this->membershipService->addPoints($order->tenant_id, $order->user_id, (int) $order->points_used, 'adjust', "订单取消退回积分 {$order->order_no}", 'order', $order->id);
+        }
     }
 
     private function defaultSubject(string $type, array $opts): string

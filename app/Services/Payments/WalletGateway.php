@@ -52,7 +52,7 @@ class WalletGateway implements GatewayInterface
         });
     }
 
-    public function verifyWebhook(array $payload, ?string $signature = null): bool { return true; }
+    public function verifyWebhook(array $payload, ?string $signature = null, ?string $rawBody = null): bool { return true; }
     public function query(Payment $payment): array { return ['status'=>$payment->status, 'channel'=>'wallet']; }
     public function refund(Payment $payment, ?float $amount = null): array
     {
@@ -70,4 +70,6 @@ class WalletGateway implements GatewayInterface
         }
         return ['success'=>true, 'refund_amount'=>$refund];
     }
+    // 余额在创建支付单时即时扣款，不存在待支付的 mock 环节
+    public function isMockMode(): bool { return false; }
 }

@@ -59,21 +59,32 @@ class MembershipService
     {
         return DB::transaction(function () use ($tenantId,$userId,$points,$type,$desc,$sourceType,$sourceId) {
             $profile = MemberProfile::where('tenant_id',$tenantId)->where('user_id',$userId)->lockForUpdate()->firstOrFail();
-            $newBalance = $profile->points + $points;
+
+            // 等级积分倍率：仅对入账(earn)生效，spend/adjust 不放大
+            $delta = $points;
+            if ($type === 'earn' && $points > 0) {
+                $multiplier = (int) ($profile->level->points_multiplier ?? 1);
+                if ($multiplier > 1) {
+                    $delta = $points * $multiplier;
+                    $desc .= "（{$profile->level->name} 积分倍率×{$multiplier}）";
+                }
+            }
+
+            $newBalance = $profile->points + $delta;
             if ($newBalance < 0) throw new \RuntimeException('积分不足');
-            $profile->update(['points'=>$newBalance, 'growth'=> $profile->growth + max(0,$points)]);
+            $profile->update(['points'=>$newBalance, 'growth'=> $profile->growth + max(0,$delta)]);
             $profile->recalcLevel();
             return PointLedger::create([
-                'tenant_id'=>$tenantId,'user_id'=>$userId,'type'=>$type,'points'=>$points,'balance_after'=>$newBalance,
+                'tenant_id'=>$tenantId,'user_id'=>$userId,'type'=>$type,'points'=>$delta,'balance_after'=>$newBalance,
                 'source_type'=>$sourceType,'source_id'=>$sourceId,'description'=>$desc,
             ]);
         });
     }
 
-    // 储值充值/消费
-    public function walletChange(int $tenantId, int $userId, float $amount, string $type, string $desc): WalletTransaction
+    // 储值充值/消费 ($orderNo: 关联支付单号，由支付流程充值时传入)
+    public function walletChange(int $tenantId, int $userId, float $amount, string $type, string $desc, ?string $orderNo = null): WalletTransaction
     {
-        return DB::transaction(function () use ($tenantId,$userId,$amount,$type,$desc) {
+        return DB::transaction(function () use ($tenantId,$userId,$amount,$type,$desc,$orderNo) {
             $wallet = Wallet::where('tenant_id',$tenantId)->where('user_id',$userId)->lockForUpdate()->first();
             if (!$wallet) $wallet = Wallet::create(['tenant_id'=>$tenantId,'user_id'=>$userId,'balance'=>0]);
             $newBalance = bcadd((string)$wallet->balance, (string)$amount, 2);
@@ -86,7 +97,8 @@ class MembershipService
             // 同步冗余到 profile
             MemberProfile::where('tenant_id',$tenantId)->where('user_id',$userId)->update(['balance'=>$newBalance]);
             return WalletTransaction::create([
-                'wallet_id'=>$wallet->id,'type'=>$type,'amount'=>$amount,'balance_after'=>$newBalance,'description'=>$desc,
+                'wallet_id'=>$wallet->id,'type'=>$type,'amount'=>$amount,'balance_after'=>$newBalance,
+                'order_no'=>$orderNo,'description'=>$desc,
             ]);
         });
     }

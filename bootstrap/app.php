@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'tenant' => \App\Http\Middleware\ResolveTenant::class,
+            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
         ]);
         // api + web 自动解析子域名租户，控制器可通过 $request->attributes->get('tenant')
         $middleware->appendToGroup('api', \App\Http\Middleware\ResolveTenant::class);
