@@ -91,8 +91,8 @@
                         <button @click="slug='demo-'+Math.floor(Math.random()*90+10)" class="h-10 px-4 rounded-full border border-[var(--line)] bg-white mono text-xs font-semibold hover:bg-[var(--paper2)]">随机</button>
                     </div>
                     <div class="mt-3 grid grid-cols-2 gap-2">
-                        <a :href="'/shop/'+(slug||'demo')" class="h-10 rounded-full bg-[var(--ink)] text-white grid place-items-center mono text-xs font-semibold hover:bg-black">预览此店 →</a>
-                        <a href="/tenants/register" class="h-10 rounded-full bg-[var(--accent)] text-white grid place-items-center mono text-xs font-semibold hover:bg-[#E63600]">用这个名字开店 ↗</a>
+                        <a href="/shop/demo" :href="'/shop/'+(slug||'demo')" class="h-10 rounded-full bg-[var(--ink)] text-white grid place-items-center mono text-xs font-semibold hover:bg-black">预览此店 →</a>
+                        <a href="/tenants/register" :href="'/tenants/register?slug='+(slug||'')" class="h-10 rounded-full bg-[var(--accent)] text-white grid place-items-center mono text-xs font-semibold hover:bg-[#E63600]">用这个名字开店 ↗</a>
                     </div>
                     <div class="mt-3 mono text-[11px] leading-relaxed opacity-50 text-center">选个好记的名字，这就是你的店址，开通后立刻可分享</div>
                 </div>

@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="/js/alpine.min.js"></script>
     <style>
         :root{ --paper:#FFFCF8; --paper2:#F6F1EB; --ink:#141412; --line:#ECE8E0; --accent:#FF3D11; --sage:#6B7F72; --sand:#EADFCB; }
         html{ scroll-behavior:smooth; }

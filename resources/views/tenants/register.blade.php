@@ -17,7 +17,7 @@
         <label class="block mono text-xs">商户名称<input name="tenant_name" placeholder="例如：夏日海边小店" class="mt-1 w-full h-10 px-3 rounded-full border border-[var(--line)] bg-[var(--paper2)] mono text-sm focus:bg-white focus:outline-none" required></label>
         <label class="block mono text-xs">店网址 slug
             <div class="mt-1 flex gap-2">
-                <input name="slug" placeholder="如 summer" pattern="[a-z0-9-]+" class="flex-1 h-10 px-4 rounded-full border border-[var(--line)] mono text-sm font-medium focus:outline-none focus:border-[var(--ink)]/20" required>
+                <input name="slug" value="{{ request('slug', old('slug')) }}" placeholder="如 summer" pattern="[a-z0-9-]+" class="flex-1 h-10 px-4 rounded-full border border-[var(--line)] mono text-sm font-medium focus:outline-none focus:border-[var(--ink)]/20" required>
                 <button type="button" onclick="checkSlug()" class="h-10 px-4 rounded-full border border-[var(--line)] bg-[var(--paper2)] mono text-xs font-semibold hover:bg-white">查重</button>
             </div>
             <div id="slugHint" class="mono text-xs mt-1"></div>
