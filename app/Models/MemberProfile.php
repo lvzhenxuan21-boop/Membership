@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MemberProfile extends Model
 {
-    protected $fillable = ['user_id','tenant_id','branch_id','membership_level_id','member_no','real_name','phone','id_card','birthday','gender','avatar','points','growth','balance','total_orders','total_spent','joined_at','last_active_at','status','extra'];
-    protected $casts = ['birthday'=>'date','joined_at'=>'datetime','last_active_at'=>'datetime','extra'=>'array','points'=>'integer','growth'=>'integer','balance'=>'decimal:2','total_spent'=>'decimal:2'];
+    protected $fillable = ['user_id','tenant_id','branch_id','membership_level_id','member_no','real_name','phone','id_card','birthday','gender','avatar','points','growth','period_started_at','growth_base','balance','total_orders','total_spent','joined_at','last_active_at','status','extra'];
+    protected $casts = ['birthday'=>'date','joined_at'=>'datetime','last_active_at'=>'datetime','period_started_at'=>'datetime','extra'=>'array','points'=>'integer','growth'=>'integer','balance'=>'decimal:2','total_spent'=>'decimal:2'];
 
     public function user(): BelongsTo { return $this->belongsTo(User::class); }
     public function tenant(): BelongsTo { return $this->belongsTo(Tenant::class); }
