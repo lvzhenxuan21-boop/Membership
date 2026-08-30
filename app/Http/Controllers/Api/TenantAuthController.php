@@ -63,6 +63,7 @@ class TenantAuthController extends Controller
                 'name' => $data['admin_name'],
                 'email' => $data['admin_email'],
                 'password' => $data['admin_password'],
+                'tenant_id' => $tenant->id, // 后台数据隔离的关键归属
             ]);
             // 平台租户管理员角色，需在 seeder 中预置 tenant_admin
             if (method_exists($user, 'assignRole')) {

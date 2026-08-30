@@ -55,4 +55,10 @@ class TenantResource extends Resource
             'edit' => EditTenant::route('/{record}/edit'),
         ];
     }
+
+    // 租户的开辟走平台侧/自助入驻流程，商户管理员不可在后台新建租户
+    public static function canCreate(): bool
+    {
+        return auth()->user()?->hasAnyRole(['super_admin', 'admin']) ?? false;
+    }
 }

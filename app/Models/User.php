@@ -17,7 +17,7 @@ use Laravel\Cashier\Billable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'tenant_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {
@@ -26,7 +26,9 @@ class User extends Authenticatable implements FilamentUser
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->hasAnyRole(['super_admin', 'admin', 'tenant_admin', 'staff']);
+        // 平台管理员直接放行；商户角色(tenant_admin/staff)必须归属某个租户才能进后台
+        if ($this->hasAnyRole(['super_admin', 'admin'])) return true;
+        return $this->tenant_id && $this->hasAnyRole(['tenant_admin', 'staff']);
     }
 
     public function memberProfiles(): HasMany

@@ -92,7 +92,7 @@ class MembershipSeeder extends Seeder
         Wallet::firstOrCreate(['tenant_id'=>$tenant->id,'user_id'=>$user->id], ['balance'=>0]);
 
         // 商户管理员（可登录后台，用于测试后台管理功能）
-        $tenantAdmin = User::firstOrCreate(['email'=>'tenant@demo.com'], ['name'=>'商户管理员','password'=>Hash::make('12345678')]);
+        $tenantAdmin = User::firstOrCreate(['email'=>'tenant@demo.com'], ['name'=>'商户管理员','password'=>Hash::make('12345678'),'tenant_id'=>$tenant->id]);
         $tenantAdmin->assignRole('tenant_admin');
     }
 }
