@@ -31,3 +31,9 @@ Thumbs.db
 *.rar
 *.7z
 *.tar.gz
+
+# storage runtime files
+/storage/framework/cache/data/
+/storage/framework/sessions/
+/storage/framework/views/
+/storage/logs/
