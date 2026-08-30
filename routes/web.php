@@ -44,32 +44,59 @@ Route::post('/register', function(Request $r){
 Route::post('/logout', function(Request $r){ Auth::logout(); $r->session()->invalidate(); $r->session()->regenerateToken(); return redirect('/'); })->name('web.logout');
 
 // B端入驻表单
-Route::get('/tenants/register', fn(Request $r)=> view('tenants.register', ['tenant'=>$r->attributes->get('tenant')]))->name('web.tenants.register');
-Route::post('/tenants/register', function(Request $r){
-    $data = $r->validate([
-        'tenant_name'=>'required|string|max:100',
-        'slug'=>'required|string|max:50|regex:/^[a-z0-9-]+$/|unique:tenants,slug',
-        'admin_name'=>'required|string|max:50',
-        'admin_email'=>'required|email|unique:users,email',
-        'admin_password'=>'required|string|min:8|confirmed',
-        'admin_password_confirmation'=>'required',
+Route::get('/tenants/register', function(Request $r){
+    $user = Auth::user();
+    // 已登录、不归属任何租户、非平台管理员 → 可用当前账号直接开店
+    $ownAccount = $user && !$user->tenant_id && !$user->hasAnyRole(['super_admin','admin']);
+    return view('tenants.register', [
+        'tenant' => $r->attributes->get('tenant'),
+        'ownAccount' => $ownAccount,
+        'userName' => $user?->name,
+        'hasOwnShop' => (bool)($user?->tenant_id),
     ]);
-    $tenant = \Illuminate\Support\Facades\DB::transaction(function() use ($data){
+})->name('web.tenants.register');
+Route::post('/tenants/register', function(Request $r){
+    $user = Auth::user();
+    $ownAccount = $user && !$user->tenant_id && !$user->hasAnyRole(['super_admin','admin']);
+    if ($ownAccount) {
+        $data = $r->validate([
+            'tenant_name'=>'required|string|max:100',
+            'slug'=>'required|string|max:50|regex:/^[a-z0-9-]+$/|unique:tenants,slug',
+        ]);
+    } else {
+        $data = $r->validate([
+            'tenant_name'=>'required|string|max:100',
+            'slug'=>'required|string|max:50|regex:/^[a-z0-9-]+$/|unique:tenants,slug',
+            'admin_name'=>'required|string|max:50',
+            'admin_email'=>'required|email|unique:users,email',
+            'admin_password'=>'required|string|min:8|confirmed',
+            'admin_password_confirmation'=>'required',
+        ]);
+    }
+    $tenant = \Illuminate\Support\Facades\DB::transaction(function() use ($data, $user, $ownAccount){
         $slug = \Illuminate\Support\Str::slug($data['slug']);
         $domain = $slug.'.'. (function(){ $url=config('app.url','http://xxx.com'); $h=parse_url($url,PHP_URL_HOST)?:'xxx.com'; $h=preg_replace('/^www\./','',$h); if($h==='localhost'||str_contains($h,'127.0.0.1')) return 'xxx.com'; return $h; })();
-        $t = \App\Models\Tenant::create(['name'=>$data['tenant_name'],'slug'=>$slug,'contact_name'=>$data['admin_name'],'status'=>'active','settings'=>['domain'=>$domain,'platform_fee_rate'=>0.05]]);
+        $t = \App\Models\Tenant::create(['name'=>$data['tenant_name'],'slug'=>$slug,'contact_name'=>$ownAccount ? $user->name : $data['admin_name'],'status'=>'active','settings'=>['domain'=>$domain,'platform_fee_rate'=>0.05]]);
         \App\Models\Branch::create(['tenant_id'=>$t->id,'name'=>'总店','status'=>'active']);
         \App\Models\MembershipLevel::create(['tenant_id'=>$t->id,'name'=>'普通会员','slug'=>'normal','level'=>1,'min_points'=>0,'is_default'=>true]);
-        $u = \App\Models\User::create(['name'=>$data['admin_name'],'email'=>$data['admin_email'],'password'=>Hash::make($data['admin_password'])]);
+        if ($ownAccount) {
+            $u = $user; // 用当前账号，无需另建管理员
+        } else {
+            $u = \App\Models\User::create(['name'=>$data['admin_name'],'email'=>$data['admin_email'],'password'=>Hash::make($data['admin_password']),'tenant_id'=>$t->id]);
+        }
+        $u->update(['tenant_id'=>$t->id]);
         try{ $u->assignRole('tenant_admin'); }catch(\Throwable $e){}
         return $t;
     });
-    return redirect('/shop/'.$tenant->slug)->with('success','创建成功：'.$tenant->slug.' → '.$tenant->settings['domain'].'，请用管理员账号登录 /admin');
+    $msg = '创建成功：'.$tenant->slug.' → '.$tenant->settings['domain'];
+    return redirect('/shop/'.$tenant->slug)->with('success', $ownAccount ? $msg.'，当前账号已成为店铺管理员，可直接登录 /admin 管理' : $msg.'，请用管理员账号登录 /admin');
 })->name('web.tenants.store');
 
 // 商城前台（tenant 自动解析）
 Route::get('/pricing', [ShopController::class,'pricing'])->name('web.pricing');
 Route::post('/pricing/subscribe', [ShopController::class,'subscribePlan'])->name('web.pricing.subscribe');
+Route::get('/pay/{orderNo}', [ShopController::class,'payShow'])->name('web.pay.show');
+Route::post('/pay/{orderNo}/switch-channel', [ShopController::class,'switchChannel'])->name('web.pay.switch');
 Route::get('/me', [ShopController::class,'me'])->name('web.me');
 Route::post('/me', [ShopController::class,'updateMe'])->name('web.me.update');
 Route::get('/check-in', [ShopController::class,'checkInPage'])->name('web.checkin');

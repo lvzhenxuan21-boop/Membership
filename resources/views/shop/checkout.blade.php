@@ -32,6 +32,12 @@
                     <option value="mock">模拟支付（演示）</option><option value="wallet">钱包余额</option><option value="wechat">微信</option><option value="alipay">支付宝</option><option value="stripe">Stripe</option>
                 </select>
             </label>
+            @if(!empty($pointsEnabled) && ($points ?? 0) > 0)
+                <label class="flex items-center gap-2 mono text-xs px-3 py-2 rounded-2xl border border-[var(--line)] bg-[var(--paper2)] cursor-pointer">
+                    <input type="checkbox" name="use_points" value="1" class="accent-[var(--ink)]">
+                    使用积分抵现（当前 {{ $points }} 分 · {{ $pointsPerYuan }} 分 = 1 元，最多可抵 {{ number_format(min($points / $pointsPerYuan, 9999), 2) }} 元）
+                </label>
+            @endif
             <div class="mono text-xs">收货信息
                 <input name="address[contact]" placeholder="收货人" class="mt-1 w-full h-10 px-3 rounded-full border border-[var(--line)] bg-white mono text-sm">
                 <input name="address[phone]" placeholder="手机号" class="mt-2 w-full h-10 px-3 rounded-full border border-[var(--line)] bg-white mono text-sm">

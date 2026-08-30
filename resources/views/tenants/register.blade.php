@@ -6,6 +6,11 @@
         <div class="mono text-[11px] tracking-[0.18em] opacity-40">NEW STORE</div>
         <h1 class="serif text-2xl tracking-[-0.02em] mt-1">创建店铺</h1>
         <p class="mono text-xs opacity-50 mt-1">生成 shop slug → shop1.xxx.com 独立商城</p>
+        @if($ownAccount ?? false)
+            <div class="mt-3 mono text-xs px-3 py-2 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800">✔ 将使用当前账号（{{ $userName }}）作为店铺管理员，无需另建账号</div>
+        @elseif(!empty($hasOwnShop))
+            <div class="mt-3 mono text-xs px-3 py-2 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800">当前账号已管理一家店铺（每个账号管理一家），此处将为新邮箱创建管理员账号</div>
+        @endif
     </div>
     <form method="POST" action="{{ route('web.tenants.store') }}" class="p-6 space-y-4">
         @csrf
@@ -18,11 +23,13 @@
             <div id="slugHint" class="mono text-xs mt-1"></div>
             <div class="mono text-xs opacity-40">将生成：<span id="slugPreview" class="font-semibold text-[var(--ink)] opacity-100">summer.xxx.com</span></div>
         </label>
-        <label class="block mono text-xs">管理员姓名<input name="admin_name" placeholder="管理员姓名" class="mt-1 w-full h-10 px-3 rounded-full border border-[var(--line)] mono text-sm" required></label>
-        <label class="block mono text-xs">管理员邮箱<input name="admin_email" type="email" placeholder="admin@example.com" class="mt-1 w-full h-10 px-3 rounded-full border border-[var(--line)] mono text-sm" required></label>
-        <label class="block mono text-xs">密码<input name="admin_password" type="password" placeholder="≥8位" class="mt-1 w-full h-10 px-3 rounded-full border border-[var(--line)] mono text-sm" required>
-            <input name="admin_password_confirmation" type="password" placeholder="确认密码" class="mt-2 w-full h-10 px-3 rounded-full border border-[var(--line)] mono text-sm" required></label>
-        <button class="w-full h-11 rounded-full bg-[var(--ink)] text-white font-semibold hover:bg-black">创建并跳转 →</button>
+        @if(!($ownAccount ?? false))
+            <label class="block mono text-xs">管理员姓名<input name="admin_name" placeholder="管理员姓名" class="mt-1 w-full h-10 px-3 rounded-full border border-[var(--line)] mono text-sm" required></label>
+            <label class="block mono text-xs">管理员邮箱<input name="admin_email" type="email" placeholder="admin@example.com" class="mt-1 w-full h-10 px-3 rounded-full border border-[var(--line)] mono text-sm" required></label>
+            <label class="block mono text-xs">密码<input name="admin_password" type="password" placeholder="≥8位" class="mt-1 w-full h-10 px-3 rounded-full border border-[var(--line)] mono text-sm" required>
+                <input name="admin_password_confirmation" type="password" placeholder="确认密码" class="mt-2 w-full h-10 px-3 rounded-full border border-[var(--line)] mono text-sm" required></label>
+        @endif
+        <button class="w-full h-11 rounded-full bg-[var(--ink)] text-white font-semibold hover:bg-black">{{ ($ownAccount ?? false) ? '用当前账号创建 →' : '创建并跳转 →' }}</button>
     </form>
 </div>
 @push('scripts')

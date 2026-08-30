@@ -7,11 +7,10 @@ use App\Models\MembershipPlan;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Shop;
+use App\Services\OrderService;
 use App\Services\PaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class ShopController extends Controller
 {
@@ -31,11 +30,13 @@ class ShopController extends Controller
         }
 
         if (!$tenant) {
-            // 裸域落地页
-            $plans = MembershipPlan::with('features')->where('is_active', true)->orderBy('price')->limit(3)->get();
-            // 若多租户无数据则回退 demo
-            if ($plans->isEmpty()) $plans = MembershipPlan::with('features')->where('tenant_id', 1)->where('is_active', true)->orderBy('price')->get();
-            return view('landing', compact('plans','tenant'));
+            // 裸域获客首页
+            $stores = \App\Models\Tenant::where('status', 'active')->orderByDesc('id')->take(8)->get();
+            $storeCount = \App\Models\Tenant::where('status', 'active')->count();
+            $demoStore = \App\Models\Tenant::where('slug', 'demo')->where('status', 'active')->first() ?? $stores->first();
+            // Hero 预览卡展示在售商品实图
+            $samples = \App\Models\Product::with('shop')->where('status', 'on_sale')->whereNotNull('cover')->orderByDesc('sales')->take(3)->get();
+            return view('landing', compact('stores', 'storeCount', 'demoStore', 'samples'));
         }
 
         $shops = Shop::where('tenant_id', $tenant->id)->where('status', 'active')->get();
@@ -65,10 +66,18 @@ class ShopController extends Controller
     public function checkout(Request $r)
     {
         $tenant = $this->tenant($r);
-        return view('shop.checkout', compact('tenant'));
+        $tid = $tenant?->id ?? (\App\Models\Tenant::where('slug','demo')->value('id') ?? 1);
+        $user = Auth::user();
+        $points = 0;
+        if ($user) {
+            $points = (int) (\App\Models\MemberProfile::where('tenant_id',$tid)->where('user_id',$user->id)->value('points') ?? 0);
+        }
+        $pointsPerYuan = max(1, (int) config('membership.points_per_yuan', 100));
+        $pointsEnabled = (bool) config('membership.points_redeem_enabled', true);
+        return view('shop.checkout', compact('tenant','points','pointsPerYuan','pointsEnabled'));
     }
 
-    public function placeOrder(Request $r, PaymentService $paySvc)
+    public function placeOrder(Request $r, OrderService $orderSvc)
     {
         $data = $r->validate([
             'shop_id' => 'required|integer|exists:shops,id',
@@ -78,66 +87,23 @@ class ShopController extends Controller
             'channel' => 'nullable|string|in:mock,wallet,wechat,alipay,stripe,manual',
             'address' => 'nullable|array',
             'coupon_id' => 'nullable|integer|exists:coupons,id',
+            'use_points' => 'nullable|boolean',
         ]);
         $tenant = $this->tenant($r);
         $user = Auth::user();
         if (!$user) return redirect()->route('web.login')->with('error', '请先登录');
 
-        $shop = Shop::findOrFail($data['shop_id']);
-        if ($tenant && $shop->tenant_id !== $tenant->id) return back()->withErrors(['shop_id' => '店铺不属于当前商户']);
-        if ($shop->status !== 'active') return back()->withErrors(['shop_id' => '店铺已关闭']);
-
         try {
-            $result = DB::transaction(function () use ($data, $user, $shop, $paySvc) {
-                $orderNo = 'ORD'.date('YmdHis').strtoupper(Str::random(6));
-                $total = 0;
-                $itemsData = [];
-                foreach ($data['items'] as $it) {
-                    $p = Product::where('shop_id', $shop->id)->lockForUpdate()->findOrFail($it['product_id']);
-                    if ($p->status !== 'on_sale') throw new \RuntimeException("商品 {$p->name} 已下架");
-                    if ($p->stock < $it['quantity']) throw new \RuntimeException("商品 {$p->name} 库存不足");
-                    $p->decrement('stock', $it['quantity']);
-                    $amount = round((float)$p->price * $it['quantity'], 2);
-                    $total += $amount;
-                    $itemsData[] = ['product'=>$p,'quantity'=>$it['quantity'],'amount'=>$amount];
-                }
-                $platformFee = round($total * (float)$shop->platform_fee_rate, 2);
-                $order = Order::create([
-                    'tenant_id'=>$shop->tenant_id,
-                    'shop_id'=>$shop->id,
-                    'user_id'=>$user->id,
-                    'order_no'=>$orderNo,
-                    'status'=>'pending',
-                    'total_amount'=>$total,
-                    'discount_amount'=>0,
-                    'pay_amount'=>$total,
-                    'platform_fee'=>$platformFee,
-                    'payment_channel'=>$data['channel'] ?? 'mock',
-                    'address'=>$data['address'] ?? null,
-                ]);
-                foreach ($itemsData as $d) {
-                    \App\Models\OrderItem::create([
-                        'order_id'=>$order->id,
-                        'product_id'=>$d['product']->id,
-                        'product_name'=>$d['product']->name,
-                        'price'=>$d['product']->price,
-                        'quantity'=>$d['quantity'],
-                        'amount'=>$d['amount'],
-                    ]);
-                }
-                $channel = $data['channel'] ?? config('payments.default_channel','mock');
-                $payment = $paySvc->create(
-                    $shop->tenant_id, $user->id, 'order', (float)$order->pay_amount, $channel,
-                    ['business_id'=>$order->id,'subject'=>"商城订单 {$order->order_no}",'coupon_id'=>$data['coupon_id'] ?? null,'original_amount'=>(float)$total,'meta'=>['order_no'=>$order->order_no,'shop_id'=>$shop->id]]
-                );
-                $order->update(['payment_order_no'=>$payment->order_no]);
-                return ['order'=>$order->fresh()->load('items','shop'),'payment'=>$payment];
-            });
+            $order = $orderSvc->placeOrder(
+                $user, $tenant, $data['shop_id'], $data['items'],
+                $data['channel'] ?? null, $data['coupon_id'] ?? null, $data['address'] ?? null,
+                (bool)($data['use_points'] ?? false),
+            );
         } catch (\Throwable $e) {
             return back()->withErrors(['items' => $e->getMessage()])->withInput();
         }
 
-        return redirect()->route('web.orders.show', $result['order']->order_no)->with('success', '下单成功，订单号 '.$result['order']->order_no);
+        return redirect()->route('web.orders.show', $order->order_no)->with('success', '下单成功，订单号 '.$order->order_no);
     }
 
     public function orders(Request $r)
@@ -168,7 +134,7 @@ class ShopController extends Controller
         return view('shop.pricing', compact('plans','tenant'));
     }
 
-    public function subscribePlan(Request $r, \App\Services\MembershipService $svc)
+    public function subscribePlan(Request $r, PaymentService $paySvc)
     {
         $user = Auth::user();
         if (!$user) return redirect()->route('web.login')->with('error','请先登录再订阅');
@@ -177,11 +143,60 @@ class ShopController extends Controller
         $tid = $tenant? $tenant->id : 1;
         $plan = MembershipPlan::where('tenant_id',$tid)->findOrFail($data['plan_id']);
         try {
-            $sub = $svc->subscribe($tid, $user->id, $plan->id, ['payment_method'=>'mock','paid_amount'=>$plan->price]);
+            // 走支付单（PaymentService 内部强制按套餐价计费），支付成功后自动激活订阅
+            $payment = $paySvc->create($tid, $user->id, 'subscription', (float)$plan->price, 'mock', ['plan_id'=>$plan->id]);
         } catch (\Throwable $e) {
             return back()->withErrors(['plan_id'=>$e->getMessage()]);
         }
-        return redirect()->route('web.pricing')->with('success','订阅成功：'.$plan->name.'（'.$sub->order_no.'）已激活');
+        return redirect()->route('web.pay.show', ['orderNo'=>$payment->order_no])->with('success','订单已创建，请完成支付');
+    }
+
+    // 通用支付页（订阅等业务类型；订单支付在 order-show 内）
+    public function payShow(Request $r, string $orderNo)
+    {
+        $user = Auth::user();
+        if (!$user) return redirect()->route('web.login')->with('error','请先登录');
+        $payment = \App\Models\Payment::where('order_no',$orderNo)->firstOrFail();
+        if ($payment->user_id !== $user->id) abort(403);
+        $sub = ($payment->business_type==='subscription' && $payment->business_id)
+            ? \App\Models\Subscription::with('plan')->find($payment->business_id) : null;
+        $mockMode = \App\Services\Payments\PaymentGatewayFactory::make($payment->channel)->isMockMode();
+        // 页面可选渠道：标记每个渠道当前是否为演示模式（未配置密钥降级）
+        $labels = ['mock'=>'演示支付','wallet'=>'余额支付','wechat'=>'微信支付','alipay'=>'支付宝','stripe'=>'Stripe 境外卡'];
+        $channels = collect($labels)->map(fn($label,$ch)=>[
+            'ch'=>$ch, 'label'=>$label,
+            'mock'=>\App\Services\Payments\PaymentGatewayFactory::make($ch)->isMockMode(),
+        ])->values();
+        return view('shop.pay-show', compact('payment','sub','mockMode','channels'));
+    }
+
+    // 切换支付渠道：取消旧支付单（连带 pending 订阅），按新渠道重开
+    public function switchChannel(Request $r, string $orderNo, PaymentService $paySvc)
+    {
+        $user = Auth::user();
+        if (!$user) return redirect()->route('web.login');
+        $payment = \App\Models\Payment::where('order_no',$orderNo)->firstOrFail();
+        if ($payment->user_id !== $user->id) abort(403);
+        $data = $r->validate(['channel'=>'required|in:mock,wallet,wechat,alipay,stripe']);
+        $to = $data['channel'];
+        if ($to === $payment->channel || !$payment->isPending()) return redirect()->route('web.pay.show', $orderNo);
+        if ($payment->business_type !== 'subscription') {
+            return redirect()->route('web.pay.show', $orderNo)->with('error','该业务类型暂不支持切换渠道');
+        }
+        $sub = \App\Models\Subscription::find($payment->business_id);
+        if (!$sub || $sub->status !== 'pending') {
+            return redirect()->route('web.pay.show', $orderNo)->with('error','订阅单状态已变化，无法切换渠道');
+        }
+        // 余额渠道预检：避免生成一笔永远付不掉的钱包支付单
+        if ($to === 'wallet') {
+            $w = \App\Models\Wallet::where('tenant_id',$payment->tenant_id)->where('user_id',$user->id)->first();
+            if (!$w || bccomp((string)$w->balance, (string)$payment->amount, 2) < 0) {
+                return back()->withErrors(['channel'=>'余额不足，请先充值或换其他支付渠道']);
+            }
+        }
+        $paySvc->cancel($payment);
+        $new = $paySvc->create($payment->tenant_id, $user->id, 'subscription', (float)$payment->original_amount, $to, ['plan_id'=>$sub->membership_plan_id]);
+        return redirect()->route('web.pay.show', ['orderNo'=>$new->order_no]);
     }
 
     public function me(Request $r)
@@ -270,6 +285,14 @@ class ShopController extends Controller
             ]);
             \App\Models\Wallet::firstOrCreate(['tenant_id'=>$tid,'user_id'=>$user->id], ['balance'=>0]);
         }
+        // 风控：同 IP 每日签到总次数限制（防脚本批量刷号）， NAT 环境请调大 config membership.checkin_ip_daily_limit
+        $ipLimit = (int) config('membership.checkin_ip_daily_limit', 20);
+        $ipKey = 'checkin:'.$tid.':'.today()->toDateString().':'.md5($r->ip() ?? '0.0.0.0');
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($ipKey, $ipLimit)) {
+            $msg = '该网络今日签到次数已达上限，如有疑问请联系商户';
+            if ($r->expectsJson()) return response()->json(['message'=>$msg], 429);
+            return back()->with('error', $msg);
+        }
         // 当日是否已签
         $todayDone = \App\Models\CheckIn::where('tenant_id',$tid)->where('user_id',$user->id)
             ->whereDate('checked_in_at', today())->exists();
@@ -298,15 +321,23 @@ class ShopController extends Controller
         $points += $bonus;
 
         $checkIn = null;
-        \Illuminate\Support\Facades\DB::transaction(function() use ($tid,$user,$profile,$points,$bonus,$newStreak,$svc,&$checkIn){
-            $branchId = $profile->branch_id ?? \App\Models\Branch::where('tenant_id',$tid)->value('id');
-            $checkIn = \App\Models\CheckIn::create([
-                'tenant_id'=>$tid,'branch_id'=>$branchId,'user_id'=>$user->id,
-                'checked_in_at'=>now(),'method'=>'web',
-            ]);
-            $svc->addPoints($tid,$user->id,$points,'earn',"每日签到 +{$points}分".($bonus? "（连签{$newStreak}天加{$bonus}）":''),'check_in',$checkIn->id);
-            $profile->update(['last_active_at'=>now()]);
-        });
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function() use ($tid,$user,$profile,$points,$bonus,$newStreak,$svc,&$checkIn){
+                $branchId = $profile->branch_id ?? \App\Models\Branch::where('tenant_id',$tid)->value('id');
+                $checkIn = \App\Models\CheckIn::create([
+                    'tenant_id'=>$tid,'branch_id'=>$branchId,'user_id'=>$user->id,
+                    'checked_in_at'=>now(),'checked_on'=>today(),'method'=>'web',
+                ]);
+                $svc->addPoints($tid,$user->id,$points,'earn',"每日签到 +{$points}分".($bonus? "（连签{$newStreak}天加{$bonus}）":''),'check_in',$checkIn->id);
+                $profile->update(['last_active_at'=>now()]);
+            });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            // (tenant,user,checked_on) 唯一键兜底：并发下同日重复签到直接拒绝
+            $msg = '今日已签到，明天再来';
+            if ($r->expectsJson()) return response()->json(['message'=>$msg], 422);
+            return back()->with('error', $msg);
+        }
+        \Illuminate\Support\Facades\RateLimiter::hit($ipKey, 86400);
 
         $msg = "签到成功 +{$points}积分，已连签{$newStreak}天".($bonus? "（含连击+{$bonus}）":'');
         if ($r->expectsJson()) return response()->json(['ok'=>true,'points'=>$points,'streak'=>$newStreak,'check_in'=>$checkIn]);

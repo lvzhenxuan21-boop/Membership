@@ -6,6 +6,10 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @php $tenant = isset($tenant) ? $tenant : (app()->bound('currentTenant') ? app('currentTenant') : null); @endphp
     <title>@yield('title', (($tenant?->name ?? 'Membership Pro').' — 多商户电商 SaaS'))</title>
+    <meta name="description" content="@yield('metaDescription', (($tenant?->name ?? 'Membership Pro').' — 独立域名的品牌网店，会员营销与全渠道收款一站配齐'))">
+    <meta property="og:title" content="@yield('title', (($tenant?->name ?? 'Membership Pro').' — 多商户电商 SaaS'))">
+    <meta property="og:description" content="@yield('metaDescription', 'Membership Pro — 30 秒免费开通属于你的品牌网店')">
+    <meta property="og:type" content="website">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -111,17 +115,17 @@ $__canAccessAdmin = auth()->check() ? auth()->user()->hasAnyRole(['super_admin',
                     <span class="serif text-lg">Membership Pro</span>
                     <span class="mono text-xs opacity-40">© {{ date('Y') }}</span>
                 </div>
-                <p class="mono text-xs leading-relaxed opacity-60 mt-2 max-w-[42ch]">一个平台，开千家不重样的店。shop1.xxx.com 子域隔离 · Filament 5.7 · 5% 自动分账。</p>
+                <p class="mono text-xs leading-relaxed opacity-60 mt-2 max-w-[42ch]">30 秒开一家属于自己的品牌网店。独立域名 · 会员营销 · 全渠道收款 · 仅 5% 交易抽佣。</p>
             </div>
             <div class="grid grid-cols-3 gap-8 mono text-xs leading-6">
-                <div><div class="font-semibold tracking-widest opacity-100 mb-1">隔离</div><span class="opacity-60">ResolveTenant<br>X-Tenant-Slug / 子域<br>/shop/{slug}</span></div>
-                <div><div class="font-semibold tracking-widest opacity-100 mb-1">账单</div><span class="opacity-60">shops / products<br>orders / order_items<br>PaymentService</span></div>
-                <div><div class="font-semibold tracking-widest opacity-100 mb-1">试用</div><span class="opacity-60">demo@member.com<br>tenant@demo.com<br>12345678</span></div>
+                <div><div class="font-semibold tracking-widest opacity-100 mb-1">开店</div><a href="/tenants/register" class="opacity-60 hover:opacity-100 underline">免费入驻</a><br><a href="/pricing" class="opacity-60 hover:opacity-100 underline">会员套餐</a><br><a href="/check-in" class="opacity-60 hover:opacity-100 underline">每日签到</a></div>
+                <div><div class="font-semibold tracking-widest opacity-100 mb-1">我的</div><a href="/me" class="opacity-60 hover:opacity-100 underline">个人中心</a><br><a href="/orders" class="opacity-60 hover:opacity-100 underline">我的订单</a><br><a href="/cart" class="opacity-60 hover:opacity-100 underline">购物车</a></div>
+                <div><div class="font-semibold tracking-widest opacity-100 mb-1">商家</div><a href="/admin" data-admin-link class="js-admin-link opacity-60 hover:opacity-100 underline">商家后台</a><br><span class="opacity-60">商家入驻协议</span><br><span class="opacity-60">隐私政策</span></div>
             </div>
         </div>
         <div class="mt-6 pt-4 border-t border-[var(--line)] flex flex-wrap gap-3 mono text-[11px] tracking-wide opacity-50 justify-between">
-            <span>Laravel 13 · PHP 8.3 · Filament 5.7 · Tailwind · Alpine 3</span>
-            <span class="flex gap-3"><a href="{{ route('web.pricing') }}" class="hover:opacity-100 underline">定价</a><a href="/api/v1/health" class="hover:opacity-100 underline">API</a><a href="/admin" data-admin-link class="js-admin-link hover:opacity-100 underline">后台</a></span>
+            <span>© {{ date('Y') }} Membership Pro · 30 秒开一家像样的网店</span>
+            <span class="flex gap-3"><a href="/tenants/register" class="hover:opacity-100 underline font-semibold">免费开店 →</a></span>
         </div>
     </div>
 </footer>
@@ -154,7 +158,7 @@ $__canAccessAdmin = auth()->check() ? auth()->user()->hasAnyRole(['super_admin',
             <div class="rounded-2xl bg-[var(--paper2)] border border-[var(--line)] p-3.5 mono text-xs leading-5 opacity-70">
                 <div class="font-semibold tracking-widest text-[11px] opacity-60 mb-1.5">如何解决</div>
                 <ul class="list-disc ml-5 space-y-1">
-                    <li>商户管理员请用 <span class="bg-white px-1 rounded border">tenant@demo.com / 12345678</span> 登录 <a href="/admin" class="underline text-[var(--accent)]">/admin</a></li>
+                    <li>请使用店铺管理员账号登录 <a href="/admin" class="underline text-[var(--accent)]">/admin</a></li>
                     <li>普通会员请前往 <a href="/me" class="underline">个人中心</a> 或 <a href="/" class="underline">商城首页</a></li>
                     <li>需要开店？<a href="/tenants/register" class="underline text-[var(--accent)]">申请入驻</a></li>
                 </ul>
