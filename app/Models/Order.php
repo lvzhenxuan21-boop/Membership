@@ -8,8 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Order extends Model
 {
-    protected $fillable = ['tenant_id','shop_id','user_id','order_no','status','total_amount','discount_amount','pay_amount','platform_fee','payment_channel','payment_order_no','address','paid_at'];
-    protected $casts = ['address'=>'array','paid_at'=>'datetime'];
+    protected $fillable = ['tenant_id','shop_id','user_id','order_no','status','total_amount','discount_amount','pay_amount','points_used','points_amount','platform_fee','payment_channel','payment_order_no','address','paid_at'];
+    protected $casts = ['address'=>'array','paid_at'=>'datetime','points_amount'=>'decimal:2'];
 
     public function tenant(): BelongsTo { return $this->belongsTo(Tenant::class); }
     public function shop(): BelongsTo { return $this->belongsTo(Shop::class); }
