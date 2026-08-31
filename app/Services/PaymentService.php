@@ -28,7 +28,16 @@ class PaymentService
         $amount = round($amount, 2);
         if ($amount < 0) throw new \InvalidArgumentException('金额不能为负');
         if (!in_array($channel, PaymentGatewayFactory::channels())) $channel = 'mock';
-        if ($amount === 0.0) $channel = 'mock'; // 0元直接成功
+        // 生产环境禁用 mock 渠道（含未配置密钥而降级 Mock 的真实渠道），防止伪造支付
+        if ($channel === 'mock' && !PaymentGatewayFactory::mockAllowed()) {
+            throw new \RuntimeException('生产环境未启用 mock 支付渠道，请配置真实支付渠道（PAYMENT_DEFAULT_CHANNEL）');
+        }
+        if (!in_array($channel, ['mock','wallet'], true)) {
+            $gateway = PaymentGatewayFactory::make($channel);
+            if ($gateway->isMockMode() && !PaymentGatewayFactory::mockAllowed()) {
+                throw new \RuntimeException("渠道 {$channel} 未配置真实密钥，生产环境禁止降级 Mock");
+            }
+        }
 
         // 订阅类型金额一律以套餐价为准，忽略调用方传入金额（防改价），后续优惠券按套餐价计算
         $plan = null;
@@ -38,18 +47,31 @@ class PaymentService
             $opts['subject'] = $plan->name;
         }
 
-        // 优惠券抵扣
+        // 优惠券抵扣（校验与名额占用移入下方事务，防止并发超发）
         $couponId = $opts['coupon_id'] ?? null;
         $discount = 0;
         $originalAmount = $opts['original_amount'] ?? $amount;
-        if ($couponId) {
-            $coupon = Coupon::where('tenant_id',$tenantId)->findOrFail($couponId);
-            $discount = $this->calcCouponDiscount($coupon, $amount, $opts);
-            $amount = max(0, round($amount - $discount, 2));
-            if ($amount === 0.0) $channel = 'mock';
-        }
 
         return DB::transaction(function () use ($tenantId,$userId,$businessType,$amount,$originalAmount,$discount,$couponId,$channel,$opts,$plan) {
+            // 优惠券：锁定行校验配额并占用一个名额（取消支付时释放，支付成功不重复计数）
+            if ($couponId) {
+                $coupon = Coupon::where('tenant_id',$tenantId)->lockForUpdate()->findOrFail($couponId);
+                $discount = $this->calcCouponDiscount($coupon, $amount);
+                if ($coupon->total_quota > 0 && $coupon->used_count >= $coupon->total_quota) {
+                    throw new \RuntimeException('优惠券已被领完');
+                }
+                if ($coupon->per_user_limit > 0) {
+                    // pending 也占个人名额防并发绕过；已退款不返还名额（券语义：用了就算）
+                    $mine = Payment::where('coupon_id',$coupon->id)->where('user_id',$userId)
+                        ->whereIn('status',['pending','paid','partial_refunded','refunded'])->count();
+                    if ($mine >= $coupon->per_user_limit) {
+                        throw new \RuntimeException("每人限用 {$coupon->per_user_limit} 次，已达使用上限");
+                    }
+                }
+                $coupon->increment('used_count');
+                $amount = max(0, round($amount - $discount, 2));
+            }
+
             $orderNo = 'PAY'.date('YmdHis').strtoupper(Str::random(6));
             $subject = $opts['subject'] ?? $this->defaultSubject($businessType, $opts);
             $payment = Payment::create([
@@ -87,6 +109,12 @@ class PaymentService
 
             // 钱包充值：business_id 暂空，支付成功后才创建 wallet_transaction
 
+            // 0元单跳过网关直接成功（不强制 mock 渠道）
+            if ((float)$payment->amount === 0.0) {
+                $this->markPaid($payment);
+                return $payment->fresh();
+            }
+
             // 调网关
             $gateway = PaymentGatewayFactory::make($channel);
             try {
@@ -100,12 +128,9 @@ class PaymentService
                 $payment->update(['pay_url'=>$payData['pay_url'] ?? null, 'channel_data'=>$payData]);
             } catch (\Throwable $e) {
                 $payment->update(['channel_data'=>['error'=>$e->getMessage()]]);
-                // 不抛异常，让前端可重试；支付单保持 pending
-            }
-
-            // 0元直接成功
-            if ($amount === 0.0) {
-                $this->markPaid($payment);
+                // 钱包渠道无外部重试语义（余额不足等），直接失败避免产生永远付不掉的死单
+                if ($channel === 'wallet') throw $e;
+                // 其他渠道不抛异常，让前端可重试；支付单保持 pending
             }
 
             return $payment->fresh();
@@ -127,9 +152,8 @@ class PaymentService
             // 触发业务
             $this->handleBusinessSuccess($payment);
 
-            // 优惠券核销
+            // 优惠券核销：名额已在创建支付单时占用，此处仅消费用户领取的券实例（如后台发券）
             if ($payment->coupon_id) {
-                Coupon::where('id',$payment->coupon_id)->increment('used_count');
                 CouponUser::where('coupon_id',$payment->coupon_id)->where('user_id',$payment->user_id)->where('status','unused')->first()?->update(['status'=>'used','used_at'=>now()]);
             }
 
@@ -204,6 +228,14 @@ class PaymentService
         if (!$orderNo) throw new \RuntimeException('回调缺少 order_no');
         $payment = Payment::where('order_no',$orderNo)->firstOrFail();
         if ($payment->isPaid()) return $payment;
+        // 支付宝/微信：回调携带的交易状态非成功时不核销
+        if ($channel === 'alipay' && isset($payload['trade_status'])
+            && !in_array($payload['trade_status'], ['TRADE_SUCCESS','TRADE_FINISHED'], true)) {
+            throw new \RuntimeException('支付宝回调交易状态非成功: '.$payload['trade_status']);
+        }
+        if ($channel === 'wechat' && isset($payload['result_code']) && $payload['result_code'] !== 'SUCCESS') {
+            throw new \RuntimeException('微信回调交易状态非成功: '.$payload['result_code']);
+        }
         // Stripe：只处理"支付成功"类事件，其余事件（退款/争议等）静默确认
         $type = $payload['type'] ?? null;
         if ($channel === 'stripe' && $type && !in_array($type, ['checkout.session.completed','payment_intent.succeeded'])) {
@@ -227,17 +259,33 @@ class PaymentService
 
     public function refund(Payment $payment, ?float $amount = null): Payment
     {
-        if (!$payment->isPaid()) throw new \RuntimeException('仅已支付订单可退款');
-        $gateway = PaymentGatewayFactory::make($payment->channel);
-        $result = $gateway->refund($payment, $amount);
-        if (!($result['success'] ?? false)) throw new \RuntimeException('退款失败: '.($result['error'] ?? 'unknown'));
+        // 事务 + 行锁：防并发双退；部分退款累计 refunded_amount，余款可继续退
+        return DB::transaction(function () use ($payment, $amount) {
+            $fresh = Payment::where('id', $payment->id)->lockForUpdate()->first();
+            if (!$fresh || !in_array($fresh->status, ['paid','partial_refunded'], true)) {
+                throw new \RuntimeException('仅已支付订单可退款');
+            }
+            $remaining = round((float)$fresh->amount - (float)$fresh->refunded_amount, 2);
+            if ($remaining <= 0) throw new \RuntimeException('订单已全额退款');
 
-        $payment->update(['status'=>$amount && $amount < (float)$payment->amount ? 'partial_refunded' : 'refunded','refunded_at'=>now()]);
-        // 若是订阅退款则取消订阅
-        if ($payment->business_type==='subscription' && $payment->business_id) {
-            Subscription::where('id',$payment->business_id)->update(['status'=>'cancelled','cancelled_at'=>now()]);
-        }
-        return $payment;
+            $refundAmount = $amount !== null ? min(round((float)$amount, 2), $remaining) : $remaining;
+            $gateway = PaymentGatewayFactory::make($fresh->channel);
+            $result = $gateway->refund($fresh, $refundAmount === (float)$fresh->amount ? null : $refundAmount);
+            if (!($result['success'] ?? false)) throw new \RuntimeException('退款失败: '.($result['error'] ?? 'unknown'));
+
+            $refundedTotal = round((float)$fresh->refunded_amount + $refundAmount, 2);
+            $fullyRefunded = bccomp((string)$refundedTotal, (string)$fresh->amount, 2) >= 0;
+            $fresh->update([
+                'status' => $fullyRefunded ? 'refunded' : 'partial_refunded',
+                'refunded_amount' => $refundedTotal,
+                'refunded_at' => now(),
+            ]);
+            // 订阅仅在全额退款时取消（部分退款保留会员权益）
+            if ($fullyRefunded && $fresh->business_type==='subscription' && $fresh->business_id) {
+                Subscription::where('id',$fresh->business_id)->where('status','active')->update(['status'=>'cancelled','cancelled_at'=>now()]);
+            }
+            return $fresh;
+        });
     }
 
     public function cancel(Payment $payment): Payment
@@ -247,6 +295,10 @@ class PaymentService
             $fresh = Payment::where('id',$payment->id)->lockForUpdate()->first();
             if (!$fresh || !$fresh->isPending()) return $payment; // 幂等：并发下已被处理
             $fresh->update(['status'=>'cancelled']);
+            // 释放创建支付单时占用的优惠券名额
+            if ($fresh->coupon_id) {
+                Coupon::where('id',$fresh->coupon_id)->where('used_count','>',0)->decrement('used_count');
+            }
             match($fresh->business_type) {
                 'subscription' => Subscription::where('id',$fresh->business_id)->where('status','pending')->update(['status'=>'cancelled','cancelled_at'=>now()]),
                 'order' => $this->cancelOrderRestoreStock($fresh),
@@ -281,7 +333,7 @@ class PaymentService
         };
     }
 
-    private function calcCouponDiscount(Coupon $coupon, float $amount, array $opts): float
+    private function calcCouponDiscount(Coupon $coupon, float $amount): float
     {
         if (!$coupon->is_active) throw new \RuntimeException('优惠券不可用');
         if ($coupon->starts_at && $coupon->starts_at->isFuture()) throw new \RuntimeException('优惠券未到可用时间');

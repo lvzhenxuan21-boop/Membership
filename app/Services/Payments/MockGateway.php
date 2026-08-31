@@ -24,7 +24,8 @@ class MockGateway implements GatewayInterface
 
     public function verifyWebhook(array $payload, ?string $signature = null, ?string $rawBody = null): bool
     {
-        return true;
+        // 演示渠道无真实签名可验，生产环境一律拒绝，防止伪造回调核销支付单
+        return PaymentGatewayFactory::mockAllowed();
     }
 
     public function query(Payment $payment): array

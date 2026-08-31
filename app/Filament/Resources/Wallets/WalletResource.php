@@ -30,6 +30,11 @@ class WalletResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'id';
 
+    // 钱包只读：余额只能经 MembershipService::walletChange 产生流水变动，后台直接改账会破坏账实一致
+    public static function canCreate(): bool { return false; }
+
+    public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool { return false; }
+
     public static function form(Schema $schema): Schema
     {
         return WalletForm::configure($schema);

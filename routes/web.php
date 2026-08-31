@@ -14,11 +14,16 @@ Route::post('/login', function(Request $r){
     $d=$r->validate(['email'=>'required|email','password'=>'required']);
     if(Auth::attempt($d, true)){ $r->session()->regenerate(); return redirect()->intended('/'); }
     return back()->withErrors(['email'=>'账号或密码错误'])->withInput();
-})->name('web.login.post');
+})->middleware('throttle:10,1')->name('web.login.post');
 
 Route::get('/register', fn(Request $r)=> view('auth.register', ['tenant'=>$r->attributes->get('tenant')]))->name('web.register');
 Route::post('/register', function(Request $r){
-    $d=$r->validate(['name'=>'required|string|max:50','email'=>'required|email|unique:users,email','password'=>'required|min:8|confirmed']);
+    $d=$r->validate([
+        'name'=>'required|string|max:50',
+        'email'=>'required|email|unique:users,email',
+        // 与 API 端注册保持一致强度：至少 8 位且含大小写字母与数字
+        'password'=>['required','confirmed',\Illuminate\Validation\Rules\Password::min(8)->letters()->mixedCase()->numbers()],
+    ]);
     $tenant = $r->attributes->get('tenant') ?? \App\Http\Middleware\ResolveTenant::resolve($r) ?? \App\Models\Tenant::where('slug','demo')->first() ?? \App\Models\Tenant::first();
     if(!$tenant) return back()->withErrors(['email'=>'系统未初始化商户，请先创建 demo 商户'])->withInput();
     $u = \Illuminate\Support\Facades\DB::transaction(function() use ($d, $tenant){
@@ -39,7 +44,7 @@ Route::post('/register', function(Request $r){
     });
     Auth::login($u, true);
     return redirect('/')->with('success','注册成功，已自动成为普通会员');
-})->name('web.register.post');
+})->middleware('throttle:5,1')->name('web.register.post');
 
 Route::post('/logout', function(Request $r){ Auth::logout(); $r->session()->invalidate(); $r->session()->regenerateToken(); return redirect('/'); })->name('web.logout');
 
@@ -69,7 +74,7 @@ Route::post('/tenants/register', function(Request $r){
             'slug'=>'required|string|max:50|regex:/^[a-z0-9-]+$/|unique:tenants,slug',
             'admin_name'=>'required|string|max:50',
             'admin_email'=>'required|email|unique:users,email',
-            'admin_password'=>'required|string|min:8|confirmed',
+            'admin_password'=>['required','confirmed',\Illuminate\Validation\Rules\Password::min(8)->letters()->mixedCase()->numbers()],
             'admin_password_confirmation'=>'required',
         ]);
     }
@@ -90,7 +95,7 @@ Route::post('/tenants/register', function(Request $r){
     });
     $msg = '创建成功：'.$tenant->slug.' → '.$tenant->settings['domain'];
     return redirect('/shop/'.$tenant->slug)->with('success', $ownAccount ? $msg.'，当前账号已成为店铺管理员，可直接登录 /admin 管理' : $msg.'，请用管理员账号登录 /admin');
-})->name('web.tenants.store');
+})->middleware('throttle:3,1')->name('web.tenants.store');
 
 // 商城前台（tenant 自动解析）
 Route::get('/pricing', [ShopController::class,'pricing'])->name('web.pricing');

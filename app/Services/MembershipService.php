@@ -86,7 +86,14 @@ class MembershipService
     {
         return DB::transaction(function () use ($tenantId,$userId,$amount,$type,$desc,$orderNo) {
             $wallet = Wallet::where('tenant_id',$tenantId)->where('user_id',$userId)->lockForUpdate()->first();
-            if (!$wallet) $wallet = Wallet::create(['tenant_id'=>$tenantId,'user_id'=>$userId,'balance'=>0]);
+            if (!$wallet) {
+                try {
+                    $wallet = Wallet::create(['tenant_id'=>$tenantId,'user_id'=>$userId,'balance'=>0]);
+                } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                    // 并发首充撞 unique(tenant_id,user_id)：改取对方已建的行
+                    $wallet = Wallet::where('tenant_id',$tenantId)->where('user_id',$userId)->lockForUpdate()->firstOrFail();
+                }
+            }
             $newBalance = bcadd((string)$wallet->balance, (string)$amount, 2);
             if (bccomp($newBalance, '0', 2) < 0) throw new \RuntimeException('余额不足');
             $wallet->update([
@@ -106,10 +113,14 @@ class MembershipService
     // Feature 消耗 - Soulbscription consume 模式
     public function consumeFeature(int $subscriptionId, string $featureCode, int $amount=1): bool
     {
-        return DB::transaction(function () use ($subscriptionId,$featureCode,$amount) {
-            $sub = Subscription::with('featureUsages.feature')->findOrFail($subscriptionId);
+        return DB::transaction(function () use ($subscriptionId, $featureCode, $amount) {
+            $sub = Subscription::findOrFail($subscriptionId);
             if (!$sub->isActive()) throw new \RuntimeException('订阅已过期/未激活');
-            $usage = $sub->featureUsages->first(fn($u)=> $u->feature->code===$featureCode);
+            // 行锁读取配额行：并发消耗在锁上串行化，防止超耗
+            $usage = SubscriptionFeatureUsage::where('subscription_id', $sub->id)
+                ->whereHas('feature', fn($q) => $q->where('code', $featureCode))
+                ->lockForUpdate()
+                ->first();
             if (!$usage) throw new \RuntimeException("Feature {$featureCode} 未包含在此套餐");
             if ($usage->quota!==null && ($usage->used + $amount) > $usage->quota) throw new \RuntimeException('权益次数已耗尽');
             $usage->increment('used', $amount);

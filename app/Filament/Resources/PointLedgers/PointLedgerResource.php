@@ -30,6 +30,11 @@ class PointLedgerResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'id';
 
+    // 积分流水只读：账本只能经 MembershipService::addPoints 产生，手工插入/篡改会破坏审计链
+    public static function canCreate(): bool { return false; }
+
+    public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool { return false; }
+
     public static function form(Schema $schema): Schema
     {
         return PointLedgerForm::configure($schema);

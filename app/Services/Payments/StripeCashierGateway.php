@@ -53,7 +53,11 @@ class StripeCashierGateway implements GatewayInterface
             ];
         } catch (\Throwable $e) {
             Log::error('[StripeCashierGateway] 创建 Session 失败: '.$e->getMessage(), ['order_no'=>$payment->order_no]);
-            // 失败降级 Mock，保证流程不断
+            // Mock 未启用（生产）时降级链接是死链，直接返回错误让支付单保持 pending 可重试
+            if (!PaymentGatewayFactory::mockAllowed()) {
+                return ['pay_url' => null, 'channel' => 'stripe', 'error' => $e->getMessage()];
+            }
+            // 演示环境降级 Mock，保证流程不断
             return [
                 'pay_url' => url("/api/v1/payment/{$payment->order_no}/mock-pay"),
                 'channel' => 'stripe',
@@ -65,7 +69,7 @@ class StripeCashierGateway implements GatewayInterface
 
     public function verifyWebhook(array $payload, ?string $signature = null, ?string $rawBody = null): bool
     {
-        if ($this->isMockMode()) return true; // 演示模式不校验
+        if ($this->isMockMode()) return PaymentGatewayFactory::mockAllowed(); // 演示模式：仅非生产放行
         $webhookSecret = $this->webhookSecret();
         // 真实渠道必须验签：未配置 webhook 密钥时拒绝回调，防止伪造通知核销支付单
         if (empty($webhookSecret)) {

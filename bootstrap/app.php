@@ -17,6 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant' => \App\Http\Middleware\ResolveTenant::class,
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
         ]);
+        // 允许同域 web session（前端 fetch 携带 cookie）通过 api 认证，配合 auth:sanctum
+        $middleware->statefulApi();
         // api + web 自动解析子域名租户，控制器可通过 $request->attributes->get('tenant')
         $middleware->appendToGroup('api', \App\Http\Middleware\ResolveTenant::class);
         $middleware->appendToGroup('web', \App\Http\Middleware\ResolveTenant::class);

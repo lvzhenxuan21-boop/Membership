@@ -29,7 +29,7 @@
 | **保级/降级** | `member_profiles` | 周期成长值快照，不达标自动降级并重置基线（调度任务） |
 | **审计日志** | `activity_logs` | 关键操作溯源（订阅过期/降级/核销等） |
 | **支付** | `payments` + Cashier | mock/钱包/微信/支付宝/Stripe/线下，退款/回调原子化，**Stripe 真实退款 + webhook 强制验签** |
-| **权限** | Spatie Permission | `super_admin`/`admin`/`tenant_admin`/`staff`/`member`；管理端点需 Bearer Token + 角色 |
+| **权限** | Spatie Permission | `super_admin`/`admin`/`tenant_admin`/`staff`/`member`；会员/支付写端点需 Bearer Token（或同域 session），积分/钱包调整与核销退款需管理员角色 |
 
 **商业模式直接覆盖：** 88VIP 式付费会员 / 等级+积分 / 储值 / 券包 / 连锁多店 / 平台抽佣。
 
@@ -114,30 +114,30 @@ POST /api/v1/auth/logout / GET /me / PUT /profile    （需 Bearer token）
 POST /api/v1/tenants/register              一键建 Tenant/Branch/Level/管理员
 GET  /api/v1/tenants/check-slug?slug=
 
-# 会员
+# 会员（plans/levels 公开，其余需 Bearer token；user_id 以登录态为准，管理员可代操作）
 GET  /api/v1/health
 GET  /api/v1/membership/plans?tenant_id=1
 GET  /api/v1/membership/levels?tenant_id=1
-GET  /api/v1/membership/profile/{userId}?tenant_id=1
-POST /api/v1/membership/subscribe          {tenant_id,user_id,plan_id}   # 金额服务端按套餐价强制
-POST /api/v1/membership/points/add         {tenant_id,user_id,points,type}  # earn 类型自动享受等级倍率
-POST /api/v1/membership/wallet/recharge    {tenant_id,user_id,amount,type}
-POST /api/v1/membership/feature/consume    {subscription_id,feature_code,amount}
+GET  /api/v1/membership/profile/{userId}?tenant_id=1   仅本人或管理员
+POST /api/v1/membership/subscribe          {tenant_id,plan_id}   # 金额服务端按套餐价强制
+POST /api/v1/membership/feature/consume    {subscription_id,feature_code,amount}   仅订阅本人或管理员
+POST /api/v1/membership/points/add         🔒 管理员 {tenant_id,user_id,points,type}  # earn 类型自动享受等级倍率
+POST /api/v1/membership/wallet/recharge    🔒 管理员 {tenant_id,user_id,amount,type}
 
 # 商城（支持子域名/path 自动识别租户）
 GET  /api/v1/shop/products                 在售商品列表
 POST /api/v1/shop/orders                   下单 {shop_id,items[],channel,coupon_id,use_points}  （需 Bearer token）
 GET  /api/v1/shop/orders / /orders/{orderNo}  我的订单（需 Bearer token）
 
-# 支付
-POST /api/v1/payment                       {tenant_id,user_id,business_type,plan_id,channel,coupon_id}
-GET  /api/v1/payment                       列表（tenant/user/status/channel 筛选）
+# 支付（除回调外均需 Bearer token；普通用户仅能操作本人支付单，管理员可跨用户）
+POST /api/v1/payment                       {tenant_id,business_type,plan_id,channel,coupon_id}  # user_id 取登录态
+GET  /api/v1/payment                       列表（仅本人；管理员可按 tenant/user 筛选）
 GET  /api/v1/payment/{orderNo}  / {orderNo}/query    # query 含主动对账兜底
-POST /api/v1/payment/{orderNo}/mock-pay    仅 Mock 模式渠道（mock + 未配置密钥降级的 wechat/alipay/stripe）
-POST /api/v1/payment/{orderNo}/cancel      本人或管理员；订单业务自动回补库存/退回积分
+POST /api/v1/payment/{orderNo}/mock-pay    本人支付单 + 仅 Mock 模式渠道；生产环境整个 mock 通道禁用（PAYMENT_MOCK_ENABLED）
+POST /api/v1/payment/{orderNo}/cancel      本人或管理员；订单业务自动回补库存/退回积分/释放优惠券名额
 POST /api/v1/payment/{orderNo}/mark-paid   🔒 管理员核销（Bearer token + super_admin/admin/tenant_admin）
 POST /api/v1/payment/{orderNo}/refund      🔒 退款（Stripe 走真实 Refund API；需 Bearer token，同上）
-POST /api/v1/payment/callback/{channel}    网关回调（Stripe 强制验签）
+POST /api/v1/payment/callback/{channel}    网关回调（Stripe 强制验签；支付宝 RSA2 / 微信 V2 手工验签或 SDK；非成功交易状态不核销）
 POST /api/v1/payment/webhook/stripe        Stripe webhook
 ```
 
@@ -179,7 +179,7 @@ app(\App\Services\MembershipService::class)->consumeFeature($subscriptionId, 'FR
 
 Payments 后台支持列表/筛选/标记已付/退款（直接调用 PaymentService，与 API 同一套事务逻辑）；Stripe 需配置 `STRIPE_SECRET` 后自动创建 Checkout Session。
 
-**数据隔离：** 商户管理员登录后仅能读写自己租户的数据（列表/编辑/导出全链路过滤，越权写入被强制归属）；平台管理员（super_admin/admin）全量可见；仅平台管理员可新建租户。
+**数据隔离：** 商户管理员登录后仅能读写自己租户的数据（列表/编辑/导出全链路过滤，越权写入被强制归属）；平台管理员（super_admin/admin）全量可见；租户支持自助入驻（web 表单与 `POST /api/v1/tenants/register`，已限流），平台管理员可后台新建。
 
 ---
 

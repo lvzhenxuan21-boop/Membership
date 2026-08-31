@@ -11,13 +11,14 @@ class Payment extends Model
         'tenant_id','user_id','order_no','transaction_no','business_type','business_id',
         'subject','amount','original_amount','discount_amount','coupon_id','currency',
         'channel','status','pay_url','channel_data','callback_data','meta',
-        'paid_at','expired_at','refunded_at'
+        'paid_at','expired_at','refunded_at','refunded_amount'
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'original_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
+        'refunded_amount' => 'decimal:2',
         'channel_data' => 'array',
         'callback_data' => 'array',
         'meta' => 'array',

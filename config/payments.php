@@ -4,6 +4,10 @@ return [
     // 默认支付渠道（演示用 mock，生产改 wechat/alipay/stripe）
     'default_channel' => env('PAYMENT_DEFAULT_CHANNEL', 'mock'),
 
+    // Mock 渠道总开关：null=自动（非生产放行，生产禁用）；显式 true/false 优先。
+    // 生产环境务必保持 unset/false，否则 mock-pay 可伪造支付成功。
+    'mock_enabled' => env('PAYMENT_MOCK_ENABLED'),
+
     // 支付超时（分钟）
     'expire_minutes' => env('PAYMENT_EXPIRE_MINUTES', 30),
 

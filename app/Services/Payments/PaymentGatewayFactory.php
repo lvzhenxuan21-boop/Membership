@@ -21,4 +21,15 @@ class PaymentGatewayFactory
     {
         return ['mock','wechat','alipay','stripe','wallet','manual'];
     }
+
+    /**
+     * Mock 模式准入：PAYMENT_MOCK_ENABLED 显式开关优先；
+     * 未设置时仅非生产环境放行（生产默认禁用 mock 渠道与 mock 回调，防止伪造支付）。
+     */
+    public static function mockAllowed(): bool
+    {
+        $flag = config('payments.mock_enabled');
+        if ($flag !== null && $flag !== '') return (bool) $flag;
+        return !app()->environment('production');
+    }
 }

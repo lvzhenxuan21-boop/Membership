@@ -197,8 +197,14 @@ class ShopController extends Controller
                 return back()->withErrors(['channel'=>'余额不足，请先充值或换其他支付渠道']);
             }
         }
-        $paySvc->cancel($payment);
-        $new = $paySvc->create($payment->tenant_id, $user->id, 'subscription', (float)$payment->original_amount, $to, ['plan_id'=>$sub->membership_plan_id]);
+        // 同一事务内"取消旧单 + 重开新单"：中途失败整体回滚，旧支付单保持 pending；优惠券跨渠道继承
+        $new = \Illuminate\Support\Facades\DB::transaction(function () use ($paySvc, $payment, $user, $to, $sub) {
+            $paySvc->cancel($payment);
+            return $paySvc->create($payment->tenant_id, $user->id, 'subscription', (float)$payment->original_amount, $to, [
+                'plan_id'=>$sub->membership_plan_id,
+                'coupon_id'=>$payment->coupon_id,
+            ]);
+        });
         return redirect()->route('web.pay.show', ['orderNo'=>$new->order_no]);
     }
 
