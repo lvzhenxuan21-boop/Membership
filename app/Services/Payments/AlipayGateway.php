@@ -24,12 +24,8 @@ class AlipayGateway implements GatewayInterface
             // return ['pay_url'=>$result->get('pay_url'), 'channel'=>'alipay', 'raw'=>$result->all()];
         }
 
-        return [
-            'pay_url' => url("/api/v1/payment/{$payment->order_no}/mock-pay"),
-            'channel' => 'alipay',
-            'mock' => true,
-            'message' => '支付宝占位：请配置 ALIPAY_* 并安装 yansongda/pay 后替换此处',
-        ];
+        // 未完成接入时诚实报错（支付单保持 pending 可重试），绝不返回假的 mock 支付链接
+        throw new \RuntimeException('支付宝渠道未完成接入：请安装 yansongda/pay 并按注释启用真实下单');
     }
 
     /**
@@ -90,7 +86,11 @@ class AlipayGateway implements GatewayInterface
     }
 
     public function query(Payment $payment): array { return ['status'=>$payment->status, 'channel'=>'alipay']; }
-    public function refund(Payment $payment, ?float $amount = null): array { return ['success'=>true, 'channel'=>'alipay']; }
+    // 退款未实现：绝不能谎报成功（本地标 refunded 而资金未动会污染账务），由 PaymentService 转为明确报错
+    public function refund(Payment $payment, ?float $amount = null): array
+    {
+        return ['success'=>false, 'channel'=>'alipay', 'error'=>'支付宝自动退款未实现：请在支付宝商家后台人工退款'];
+    }
     // 未配置 ALIPAY_APP_ID 视为 Mock；已配置 app_id 但未装 SDK 时，凭 ALIPAY_PUBLIC_KEY 仍可手工验签，不算 Mock
     public function isMockMode(): bool
     {

@@ -14,6 +14,30 @@ class MembershipController extends Controller
 {
     public function __construct(private MembershipService $svc) {}
 
+    /**
+     * 管理员操作的目标租户：平台管理员可指定任意租户；
+     * 租户职员强制本租户（不信任请求传入的 tenant_id，防跨租户越权）。
+     */
+    private function targetTenantId(Request $r): int
+    {
+        $user = $r->user();
+        if ($user->hasAnyRole(['super_admin','admin'])) {
+            $tid = (int) $r->input('tenant_id', 0);
+            if ($tid <= 0) throw new \InvalidArgumentException('平台管理员需指定 tenant_id');
+            return $tid;
+        }
+        if (!empty($user->tenant_id)) return (int) $user->tenant_id;
+        throw new \InvalidArgumentException('账号未绑定租户，无法执行该操作');
+    }
+
+    // 目标用户必须在该商户下有会员档案（防止把积分/钱包/订阅挂到跨租户用户身上）
+    private function requireProfileInTenant(int $tenantId, int $userId): void
+    {
+        if (!MemberProfile::where('tenant_id',$tenantId)->where('user_id',$userId)->exists()) {
+            throw new \InvalidArgumentException('目标用户在该商户下没有会员档案');
+        }
+    }
+
     // 套餐/等级公开（公开定价页）
     public function plans(Request $r) {
         $tenantId = (int)($r->input('tenant_id', 1));
@@ -40,8 +64,13 @@ class MembershipController extends Controller
 
     // 订阅：user_id 以登录态为准，仅管理员可代开
     public function subscribe(Request $r) {
-        $data = $r->validate(['tenant_id'=>'required|integer','user_id'=>'nullable|integer','plan_id'=>'required|integer','payment_method'=>'nullable|string']);
+        $data = $r->validate(['tenant_id'=>'nullable|integer','user_id'=>'nullable|integer','plan_id'=>'required|integer','payment_method'=>'nullable|string']);
         $user = $r->user();
+        try {
+            $tenantId = $this->targetTenantId($r);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message'=>$e->getMessage()], 422);
+        }
         $userId = $user->id;
         if (isset($data['user_id']) && (int)$data['user_id'] !== $userId) {
             if (!$user->hasAnyRole(['super_admin','admin','tenant_admin'])) {
@@ -49,21 +78,38 @@ class MembershipController extends Controller
             }
             $userId = (int)$data['user_id'];
         }
-        $sub = $this->svc->subscribe($data['tenant_id'],$userId,$data['plan_id'], $data);
+        try {
+            $this->requireProfileInTenant($tenantId, $userId);
+            $sub = $this->svc->subscribe($tenantId,$userId,$data['plan_id'], $data);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message'=>$e->getMessage()], 422);
+        }
         return response()->json($sub->load('plan','featureUsages.feature'), 201);
     }
 
-    // 积分调整：仅管理员（路由已限角色）
+    // 积分调整：仅管理员（路由已限角色）；租户职员强制本租户
     public function addPoints(Request $r) {
-        $data = $r->validate(['tenant_id'=>'required|integer','user_id'=>'required|integer','points'=>'required|integer','type'=>'required|in:earn,spend,adjust','description'=>'nullable|string']);
-        $ledger = $this->svc->addPoints($data['tenant_id'],$data['user_id'],$data['points'],$data['type'],$data['description']??'admin');
+        $data = $r->validate(['user_id'=>'required|integer','points'=>'required|integer','type'=>'required|in:earn,spend,adjust','description'=>'nullable|string']);
+        try {
+            $tenantId = $this->targetTenantId($r);
+            $this->requireProfileInTenant($tenantId, (int)$data['user_id']);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message'=>$e->getMessage()], 422);
+        }
+        $ledger = $this->svc->addPoints($tenantId,$data['user_id'],$data['points'],$data['type'],$data['description']??'admin');
         return response()->json($ledger, 201);
     }
 
-    // 钱包变动：仅管理员（路由已限角色）
+    // 钱包变动：仅管理员（路由已限角色）；租户职员强制本租户
     public function walletRecharge(Request $r) {
-        $data = $r->validate(['tenant_id'=>'required|integer','user_id'=>'required|integer','amount'=>'required|numeric','type'=>'nullable|in:recharge,consume','description'=>'nullable|string']);
-        $tx = $this->svc->walletChange($data['tenant_id'],$data['user_id'], (float)$data['amount'], $data['type']??'recharge', $data['description']??'recharge');
+        $data = $r->validate(['user_id'=>'required|integer','amount'=>'required|numeric','type'=>'nullable|in:recharge,consume','description'=>'nullable|string']);
+        try {
+            $tenantId = $this->targetTenantId($r);
+            $this->requireProfileInTenant($tenantId, (int)$data['user_id']);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message'=>$e->getMessage()], 422);
+        }
+        $tx = $this->svc->walletChange($tenantId,$data['user_id'], (float)$data['amount'], $data['type']??'recharge', $data['description']??'recharge');
         return response()->json($tx, 201);
     }
 

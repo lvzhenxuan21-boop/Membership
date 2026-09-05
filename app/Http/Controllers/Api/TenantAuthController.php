@@ -3,18 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Branch;
-use App\Models\MembershipLevel;
 use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 
 class TenantAuthController extends Controller
 {
-    // 商户自助入驻 - shop1.xxx.com 模式
+    // 商户自助入驻 - shop1.xxx.com 模式（开通逻辑统一在 TenantProvisioning）
     // POST /api/v1/tenants/register
     public function register(Request $r)
     {
@@ -30,61 +26,24 @@ class TenantAuthController extends Controller
             'plan_id' => 'nullable|integer|exists:membership_plans,id',
         ]);
 
-        return DB::transaction(function () use ($data) {
-            $tenant = Tenant::create([
-                'name' => $data['tenant_name'],
-                'slug' => Str::slug($data['slug']),
-                'contact_name' => $data['contact_name'] ?? $data['admin_name'],
-                'contact_phone' => $data['contact_phone'] ?? null,
-                'status' => 'active',
-                'settings' => [
-                    'domain' => $data['slug'] . '.' . $this->baseDomain(),
-                    'platform_fee_rate' => 0.05,
-                ],
-            ]);
+        [$tenant, $admin] = app(\App\Services\TenantProvisioning::class)->provision(
+            $data['tenant_name'],
+            $data['slug'],
+            ($data['contact_name'] ?? null) ?: $data['admin_name'],
+            null,
+            ['name'=>$data['admin_name'], 'email'=>$data['admin_email'], 'password'=>$data['admin_password']],
+        );
 
-            $branch = Branch::create([
-                'tenant_id' => $tenant->id,
-                'name' => '总店',
-                'status' => 'active',
-            ]);
-
-            // 默认等级
-            MembershipLevel::create([
-                'tenant_id' => $tenant->id,
-                'name' => '普通会员',
-                'slug' => 'normal',
-                'level' => 1,
-                'min_points' => 0,
-                'is_default' => true,
-            ]);
-
-            $user = User::create([
-                'name' => $data['admin_name'],
-                'email' => $data['admin_email'],
-                'password' => $data['admin_password'],
-                'tenant_id' => $tenant->id, // 后台数据隔离的关键归属
-            ]);
-            // 平台租户管理员角色，需在 seeder 中预置 tenant_admin
-            if (method_exists($user, 'assignRole')) {
-                try { $user->assignRole('tenant_admin'); } catch (\Throwable $e) {}
-            }
-
-            $token = $user->createToken('tenant-admin-token')->plainTextToken;
-
-            // 自动订阅试用套餐（可选）
-            // if (!empty($data['plan_id'])) { app(\App\Services\MembershipService::class)->subscribe($tenant->id, $user->id, $data['plan_id']); }
-
-            return response()->json([
-                'tenant' => $tenant,
-                'branch' => $branch,
-                'admin' => $user,
-                'token' => $token,
-                'token_type' => 'Bearer',
-                'domain' => $tenant->settings['domain'] ?? null,
-                'message' => '商户入驻成功，请用 ' . ($tenant->settings['domain'] ?? $tenant->slug.'.'. $this->baseDomain()) . ' 访问店铺',
-            ], 201);
-        });
+        return response()->json([
+            'tenant' => $tenant,
+            'admin' => $admin,
+            'token' => $admin->createToken('tenant-admin-token')->plainTextToken,
+            'token_type' => 'Bearer',
+            'domain' => $tenant->settings['domain'] ?? null,
+            'message' => $tenant->status === 'active'
+                ? '商户入驻成功，请用 ' . ($tenant->settings['domain'] ?? $tenant->slug.'.'. $this->baseDomain()) . ' 访问店铺'
+                : '商户创建成功，等待平台审核通过后即可访问',
+        ], 201);
     }
 
     public function checkSlug(Request $r)

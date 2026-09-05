@@ -49,7 +49,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/products', [OrderController::class, 'products']);
         Route::get('/products/{id}', [OrderController::class, 'productShow']);
         Route::middleware('auth:sanctum')->group(function () {
-            Route::post('/orders', [OrderController::class, 'create']);
+            Route::post('/orders', [OrderController::class, 'create'])->middleware('throttle:10,1'); // 下单限流：pending 订单会锁库存
             Route::get('/orders', [OrderController::class, 'list']);
             Route::get('/orders/{orderNo}', [OrderController::class, 'show']);
         });

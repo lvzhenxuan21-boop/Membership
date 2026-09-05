@@ -14,28 +14,32 @@ class CancelExpiredPayments extends Command
 
     public function handle(PaymentService $svc): int
     {
-        $payments = Payment::query()
+        $done = 0;
+        $total = 0;
+        // chunkById 分块：取消操作会把单据移出过滤集，按主键升序分页安全
+        Payment::query()
             ->pending()
             ->whereNotNull('expired_at')
             ->where('expired_at', '<', now())
-            ->get();
+            ->orderBy('id')
+            ->chunkById(200, function ($payments) use ($svc, &$done, &$total) {
+                foreach ($payments as $payment) {
+                    $total++;
+                    try {
+                        $svc->cancel($payment);
+                        $done++;
+                        $this->line("已取消: {$payment->order_no} ({$payment->business_type})");
+                    } catch (\Throwable $e) {
+                        $this->warn("{$payment->order_no} 取消失败: {$e->getMessage()}");
+                    }
+                }
+            });
 
-        if ($payments->isEmpty()) {
+        if ($total === 0) {
             $this->info('没有过期的待支付支付单');
             return self::SUCCESS;
         }
-
-        $done = 0;
-        foreach ($payments as $payment) {
-            try {
-                $svc->cancel($payment);
-                $done++;
-                $this->line("已取消: {$payment->order_no} ({$payment->business_type})");
-            } catch (\Throwable $e) {
-                $this->warn("{$payment->order_no} 取消失败: {$e->getMessage()}");
-            }
-        }
-        $this->info("共取消 {$done}/{$payments->count()} 笔过期支付单");
+        $this->info("共取消 {$done}/{$total} 笔过期支付单");
         return self::SUCCESS;
     }
 }

@@ -78,22 +78,20 @@ Route::post('/tenants/register', function(Request $r){
             'admin_password_confirmation'=>'required',
         ]);
     }
-    $tenant = \Illuminate\Support\Facades\DB::transaction(function() use ($data, $user, $ownAccount){
-        $slug = \Illuminate\Support\Str::slug($data['slug']);
-        $domain = $slug.'.'. (function(){ $url=config('app.url','http://xxx.com'); $h=parse_url($url,PHP_URL_HOST)?:'xxx.com'; $h=preg_replace('/^www\./','',$h); if($h==='localhost'||str_contains($h,'127.0.0.1')) return 'xxx.com'; return $h; })();
-        $t = \App\Models\Tenant::create(['name'=>$data['tenant_name'],'slug'=>$slug,'contact_name'=>$ownAccount ? $user->name : $data['admin_name'],'status'=>'active','settings'=>['domain'=>$domain,'platform_fee_rate'=>0.05]]);
-        \App\Models\Branch::create(['tenant_id'=>$t->id,'name'=>'总店','status'=>'active']);
-        \App\Models\MembershipLevel::create(['tenant_id'=>$t->id,'name'=>'普通会员','slug'=>'normal','level'=>1,'min_points'=>0,'is_default'=>true]);
-        if ($ownAccount) {
-            $u = $user; // 用当前账号，无需另建管理员
-        } else {
-            $u = \App\Models\User::create(['name'=>$data['admin_name'],'email'=>$data['admin_email'],'password'=>Hash::make($data['admin_password']),'tenant_id'=>$t->id]);
-        }
-        $u->update(['tenant_id'=>$t->id]);
-        try{ $u->assignRole('tenant_admin'); }catch(\Throwable $e){}
-        return $t;
-    });
-    $msg = '创建成功：'.$tenant->slug.' → '.$tenant->settings['domain'];
+
+    // 开通逻辑与 API 共用 TenantProvisioning（是否直接激活由 MEMBERSHIP_TENANT_AUTO_ACTIVATE 控制）
+    [$tenant, $admin] = app(\App\Services\TenantProvisioning::class)->provision(
+        $data['tenant_name'],
+        $data['slug'],
+        $ownAccount ? $user->name : $data['admin_name'],
+        $ownAccount ? $user : null,
+        $ownAccount ? null : ['name'=>$data['admin_name'],'email'=>$data['admin_email'],'password'=>$data['admin_password']],
+    );
+
+    if ($tenant->status !== 'active') {
+        return redirect('/')->with('success', '店铺「'.$tenant->name.'」创建成功，等待平台审核通过后即可访问');
+    }
+    $msg = '创建成功：'.$tenant->slug.' → '.($tenant->settings['domain'] ?? '');
     return redirect('/shop/'.$tenant->slug)->with('success', $ownAccount ? $msg.'，当前账号已成为店铺管理员，可直接登录 /admin 管理' : $msg.'，请用管理员账号登录 /admin');
 })->middleware('throttle:3,1')->name('web.tenants.store');
 
@@ -109,7 +107,7 @@ Route::post('/check-in', [ShopController::class,'checkIn'])->name('web.checkin.s
 Route::get('/products/{id}', [ShopController::class,'show'])->name('web.products.show');
 Route::get('/cart', [ShopController::class,'cart'])->name('web.cart');
 Route::get('/checkout', [ShopController::class,'checkout'])->name('web.checkout');
-Route::post('/checkout', [ShopController::class,'placeOrder'])->name('web.checkout.place');
+Route::post('/checkout', [ShopController::class,'placeOrder'])->middleware('throttle:10,1')->name('web.checkout.place');
 Route::get('/orders', [ShopController::class,'orders'])->name('web.orders');
 Route::get('/orders/{orderNo}', [ShopController::class,'orderShow'])->name('web.orders.show');
 Route::get('/shop/{slug}', [ShopController::class,'index'])->name('web.shop.slug');

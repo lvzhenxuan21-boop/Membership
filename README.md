@@ -225,6 +225,9 @@ php artisan memberships:relevel        # 每日 02:10：保级周期重算（不
 | `MEMBERSHIP_RELEVEL_MONTHS` | 12 | 保级周期（月） |
 | `MEMBERSHIP_CHECKIN_IP_LIMIT` | 20 | 同 IP 每日签到上限 |
 | `MEMBERSHIP_DEMO_STORE_URL` | - | 首页「示例店铺」入口指向的线上店铺 |
+| `MEMBERSHIP_TENANT_AUTO_ACTIVATE` | true | 自助开店是否直接激活；**生产建议 false**（开店后 pending，平台后台审核激活，未激活租户的子域名/店铺不对外渲染） |
+| `MEMBERSHIP_DEFAULT_TENANT_SLUG` | demo | 裸域访问 `/pricing` `/me` `/check-in` 等页面的兜底商户 |
+| `MEMBERSHIP_MAX_PENDING_ORDERS` | 5 | 单用户未支付订单上限（pending 订单锁库存，防脚本刷单；0=不限制） |
 
 ---
 
@@ -233,11 +236,11 @@ php artisan memberships:relevel        # 每日 02:10：保级周期重算（不
 | 渠道 | `.env` 键 | 说明 |
 |------|-----------|------|
 | `mock` | `PAYMENT_DEFAULT_CHANNEL=mock` | 演示默认，无需密钥，`/mock-pay` 一键成功 |
-| `wallet` | `PAYMENT_WALLET_ENABLED=true` | 余额支付，自动扣减 `wallets.balance` |
+| `wallet` | `PAYMENT_WALLET_ENABLED=true` | 余额支付，自动扣减 `wallets.balance`；**钱包充值业务禁止用余额渠道支付** |
 | `manual` | - | 线下/人工，管理员在 Filament 点“标记已付” |
 | `stripe` | `STRIPE_SECRET` / `STRIPE_KEY` / `STRIPE_WEBHOOK_SECRET` | Checkout Session + **真实 Refund API**；webhook 强制验签 |
-| `wechat` | `WECHAT_PAY_MCH_ID` 等 | 预留 `yansongda/pay` 接入点，未安装/未配置降级 Mock |
-| `alipay` | `ALIPAY_APP_ID` 等 | 同上 |
+| `wechat` | `WECHAT_PAY_MCH_ID` 等 | 预留 `yansongda/pay` 接入点，未安装/未配置降级 Mock；**自动退款未实现**——对微信支付单发起退款会明确报错（不会谎报成功），请人工在商户平台退款 |
+| `alipay` | `ALIPAY_APP_ID` 等 | 同上，**自动退款未实现**，请人工在商家后台退款 |
 
 `User` 已 `Billable`，`AppServiceProvider` 已处理 Cashier 订阅表冲突（本项目 `subscriptions` 保留业务含义，不使用 Cashier 官方迁移）。
 

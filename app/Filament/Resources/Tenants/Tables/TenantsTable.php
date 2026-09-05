@@ -23,6 +23,13 @@ class TenantsTable
                 TextColumn::make('contact_phone')
                     ->searchable(),
                 TextColumn::make('status')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'active' => 'success',
+                        'pending' => 'warning',
+                        'trial' => 'info',
+                        default => 'danger',
+                    })
                     ->searchable(),
                 TextColumn::make('created_at')
                     ->dateTime()

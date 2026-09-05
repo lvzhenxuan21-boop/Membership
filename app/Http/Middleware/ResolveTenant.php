@@ -22,16 +22,17 @@ class ResolveTenant
 
     public static function resolve(Request $request): ?Tenant
     {
+        // 只解析在营租户：pending（待审核）/停用的租户不对外渲染
         // 1. 显式 header 优先 X-Tenant-Slug
         if ($slug = $request->header('X-Tenant-Slug')) {
-            if ($t = Tenant::where('slug', $slug)->first()) return $t;
+            if ($t = Tenant::where('slug', $slug)->where('status', 'active')->first()) return $t;
         }
         // 2. query / body tenant_id / slug 兼容
         if ($request->filled('tenant_slug')) {
-            if ($t = Tenant::where('slug', $request->input('tenant_slug'))->first()) return $t;
+            if ($t = Tenant::where('slug', $request->input('tenant_slug'))->where('status', 'active')->first()) return $t;
         }
         if ($request->filled('tenant_id') && is_numeric($request->input('tenant_id'))) {
-            if ($t = Tenant::find($request->input('tenant_id'))) return $t;
+            if ($t = Tenant::where('id', $request->input('tenant_id'))->where('status', 'active')->first()) return $t;
         }
         // 3. 子域名解析 shop1.xxx.com -> slug=shop1
         $host = $request->getHost(); // shop1.xxx.com:8000 -> shop1.xxx.com
@@ -46,13 +47,13 @@ class ResolveTenant
             // 支持 shop1  或 shop1.xxx 里的第一段
             $slug = explode('.', $sub)[0];
             if ($slug && $slug !== 'www' && $slug !== 'api' && $slug !== 'admin') {
-                if ($t = Tenant::where('slug', $slug)->first()) return $t;
+                if ($t = Tenant::where('slug', $slug)->where('status', 'active')->first()) return $t;
             }
         }
         // 4. 裸域 + path 模式 /shop/{slug} 兼容
         if ($request->is('shop/*')) {
             $slug = explode('/', trim($request->path(), '/'))[1] ?? null;
-            if ($slug && $t = Tenant::where('slug', $slug)->first()) return $t;
+            if ($slug && $t = Tenant::where('slug', $slug)->where('status', 'active')->first()) return $t;
         }
         return null;
     }

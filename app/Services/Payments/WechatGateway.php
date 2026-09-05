@@ -33,12 +33,8 @@ class WechatGateway implements GatewayInterface
         // $result = \Yansongda\Pay\Pay::wechat()->mp($order);
         // return ['pay_url'=>$result->get('code_url'), 'channel'=>'wechat', 'raw'=>$result];
 
-        return [
-            'pay_url' => url("/api/v1/payment/{$payment->order_no}/mock-pay"),
-            'channel' => 'wechat',
-            'mock' => true,
-            'message' => '微信支付占位：请配置 WECHAT_PAY_* 并安装 yansongda/pay 后替换此处',
-        ];
+        // 未完成接入时诚实报错（支付单保持 pending 可重试），绝不返回假的 mock 支付链接
+        throw new \RuntimeException('微信支付渠道未完成接入：请安装 yansongda/pay 并按注释启用真实下单');
     }
 
     public function verifyWebhook(array $payload, ?string $signature = null, ?string $rawBody = null): bool
@@ -82,7 +78,11 @@ class WechatGateway implements GatewayInterface
     }
 
     public function query(Payment $payment): array { return ['status'=>$payment->status, 'channel'=>'wechat']; }
-    public function refund(Payment $payment, ?float $amount = null): array { return ['success'=>true, 'channel'=>'wechat']; }
+    // 退款未实现：绝不能谎报成功（本地标 refunded 而资金未动会污染账务），由 PaymentService 转为明确报错
+    public function refund(Payment $payment, ?float $amount = null): array
+    {
+        return ['success'=>false, 'channel'=>'wechat', 'error'=>'微信自动退款未实现：请在微信商户平台人工退款'];
+    }
     // 未配置 WECHAT_PAY_MCH_ID 视为 Mock；已配置商户号但未装 SDK 时，凭 MCH_KEY 仍可手工验签，不算 Mock
     public function isMockMode(): bool
     {

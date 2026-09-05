@@ -19,14 +19,46 @@ class ShopController extends Controller
         return $r->attributes->get('tenant') ?? \App\Http\Middleware\ResolveTenant::resolve($r);
     }
 
+    /**
+     * 当前商户 ID：优先租户解析，其次兜底默认商户（MEMBERSHIP_DEFAULT_TENANT_SLUG，默认 demo）。
+     * 找不到返回 null——绝不魔法回退到 id=1，避免绑错租户。
+     */
+    private function tenantId(Request $r): ?int
+    {
+        if ($tenant = $this->tenant($r)) return (int) $tenant->id;
+        $slug = config('membership.default_tenant_slug', 'demo');
+        if (!$slug) return null;
+        $id = \App\Models\Tenant::where('slug', $slug)->where('status', 'active')->value('id');
+        return $id ? (int) $id : null;
+    }
+
+    // 连签天数：一次查询取最近签到日，按日历连续性计数（替代逐天 exists 的 N 次查询）
+    private function computeStreak(int $tenantId, int $userId, bool $todayDone): int
+    {
+        $start = $todayDone ? today() : today()->subDay();
+        $dates = \App\Models\CheckIn::where('tenant_id',$tenantId)->where('user_id',$userId)
+            ->where('checked_on','>=', $start->copy()->subDays(60)->toDateString())
+            ->orderByDesc('checked_on')
+            ->limit(61)
+            ->pluck('checked_on');
+        $streak = 0;
+        $cursor = $start->copy();
+        foreach ($dates as $d) {
+            if (!$d->isSameDay($cursor)) break;
+            $streak++;
+            $cursor = $cursor->subDay();
+        }
+        return $streak;
+    }
+
     // 首页：有 tenant → 商城，无 tenant → SaaS 落地页
     public function index(Request $r)
     {
         $tenant = $this->tenant($r);
-        // path 兼容 /shop/{slug}
+        // path 兼容 /shop/{slug}（只认在营租户）
         if (!$tenant && $r->is('shop/*')) {
             $slug = explode('/', trim($r->path(), '/'))[1] ?? null;
-            if ($slug) $tenant = \App\Models\Tenant::where('slug', $slug)->first();
+            if ($slug) $tenant = \App\Models\Tenant::where('slug', $slug)->where('status', 'active')->first();
         }
 
         if (!$tenant) {
@@ -54,7 +86,7 @@ class ShopController extends Controller
     public function show(Request $r, int $id)
     {
         $tenant = $this->tenant($r);
-        $product = Product::with('shop')->findOrFail($id);
+        $product = Product::with('shop')->where('status', 'on_sale')->findOrFail($id);
         if ($tenant && $product->tenant_id !== $tenant->id) abort(404);
         $related = Product::where('shop_id', $product->shop_id)->where('id', '!=', $product->id)->where('status', 'on_sale')->limit(4)->get();
         return view('shop.show', compact('product', 'tenant', 'related'));
@@ -69,12 +101,11 @@ class ShopController extends Controller
     public function checkout(Request $r)
     {
         $tenant = $this->tenant($r);
-        $tid = $tenant?->id ?? (\App\Models\Tenant::where('slug','demo')->value('id') ?? 1);
+        $tid = $this->tenantId($r);
         $user = Auth::user();
-        $points = 0;
-        if ($user) {
-            $points = (int) (\App\Models\MemberProfile::where('tenant_id',$tid)->where('user_id',$user->id)->value('points') ?? 0);
-        }
+        $points = ($user && $tid)
+            ? (int) (\App\Models\MemberProfile::where('tenant_id',$tid)->where('user_id',$user->id)->value('points') ?? 0)
+            : 0;
         $pointsPerYuan = max(1, (int) config('membership.points_per_yuan', 100));
         $pointsEnabled = (bool) config('membership.points_redeem_enabled', true);
         return view('shop.checkout', compact('tenant','points','pointsPerYuan','pointsEnabled'));
@@ -132,8 +163,10 @@ class ShopController extends Controller
     public function pricing(Request $r)
     {
         $tenant = $this->tenant($r);
-        $tid = $tenant? $tenant->id : 1;
-        $plans = MembershipPlan::with('features')->where('tenant_id', $tid)->where('is_active', true)->orderBy('price')->get();
+        $tid = $this->tenantId($r);
+        $plans = $tid
+            ? MembershipPlan::with('features')->where('tenant_id', $tid)->where('is_active', true)->orderBy('price')->get()
+            : collect();
         return view('shop.pricing', compact('plans','tenant'));
     }
 
@@ -143,7 +176,8 @@ class ShopController extends Controller
         if (!$user) return redirect()->route('web.login')->with('error','请先登录再订阅');
         $data = $r->validate(['plan_id'=>'required|integer|exists:membership_plans,id']);
         $tenant = $this->tenant($r);
-        $tid = $tenant? $tenant->id : 1;
+        $tid = $this->tenantId($r);
+        if (!$tid) return back()->withErrors(['plan_id'=>'无法识别商户，请从商户店铺页面进入']);
         $plan = MembershipPlan::where('tenant_id',$tid)->findOrFail($data['plan_id']);
         try {
             // 走支付单（PaymentService 内部强制按套餐价计费），支付成功后自动激活订阅
@@ -213,7 +247,8 @@ class ShopController extends Controller
         $tenant = $this->tenant($r);
         $user = Auth::user();
         if (!$user) return redirect()->route('web.login')->with('error','请先登录');
-        $tid = $tenant? $tenant->id : ( \App\Models\Tenant::where('slug','demo')->value('id') ?? 1);
+        $tid = $this->tenantId($r);
+        if (!$tid) return redirect('/')->with('error','请从商户店铺访问会员中心');
         $profile = \App\Models\MemberProfile::with(['level','branch','tenant'])->where('tenant_id',$tid)->where('user_id',$user->id)->first();
         // 若无档案（历史账号）则现场补建普通会员
         if (!$profile) {
@@ -243,14 +278,7 @@ class ShopController extends Controller
         }
         // 签到状态
         $todayDone = \App\Models\CheckIn::where('tenant_id',$tid)->where('user_id',$user->id)->whereDate('checked_in_at', today())->exists();
-        $streak = 0;
-        $cursor = $todayDone ? today() : today()->subDay();
-        while(true){
-            $has = \App\Models\CheckIn::where('tenant_id',$tid)->where('user_id',$user->id)->whereDate('checked_in_at', $cursor)->exists();
-            if (!$has) break;
-            $streak++; $cursor = $cursor->subDay();
-            if ($streak>60) break;
-        }
+        $streak = $this->computeStreak($tid, $user->id, $todayDone);
         return view('shop.me', compact('tenant','user','profile','wallet','walletTx','levels','subs','orders','ledgers','progress','nextLevel','todayDone','streak'));
     }
 
@@ -267,7 +295,8 @@ class ShopController extends Controller
         ]);
         if (!empty($data['name'])) $user->update(['name'=>$data['name']]);
         $tenant = $this->tenant($r);
-        $tid = $tenant? $tenant->id : ( \App\Models\Tenant::where('slug','demo')->value('id') ?? 1);
+        $tid = $this->tenantId($r);
+        if (!$tid) return back()->with('error','无法识别商户');
         $profile = \App\Models\MemberProfile::where('tenant_id',$tid)->where('user_id',$user->id)->first();
         if ($profile) {
             $up = collect($data)->only(['real_name','phone','gender','birthday'])->filter(fn($v)=>$v!==null)->toArray();
@@ -281,7 +310,8 @@ class ShopController extends Controller
         $tenant = $this->tenant($r);
         $user = Auth::user();
         if (!$user) return redirect()->route('web.login')->with('error','请先登录再签到');
-        $tid = $tenant? $tenant->id : ( \App\Models\Tenant::where('slug','demo')->value('id') ?? 1);
+        $tid = $this->tenantId($r);
+        if (!$tid) return redirect('/')->with('error','请从商户店铺访问签到页');
         // 确保有档案
         $profile = \App\Models\MemberProfile::where('tenant_id',$tid)->where('user_id',$user->id)->first();
         if (!$profile) {
@@ -310,15 +340,7 @@ class ShopController extends Controller
             return back()->with('error','今日已签到，明天再来');
         }
         // 计算连击：从昨天往前连续天数
-        $streak = 0;
-        $cursor = today()->subDay();
-        while(true){
-            $has = \App\Models\CheckIn::where('tenant_id',$tid)->where('user_id',$user->id)
-                ->whereDate('checked_in_at', $cursor)->exists();
-            if (!$has) break;
-            $streak++; $cursor = $cursor->subDay();
-            if ($streak>60) break;
-        }
+        $streak = $this->computeStreak($tid, $user->id, false);
         $newStreak = $streak + 1;
         // 奖励：基础10 + 连击加成
         $points = 10;
@@ -358,25 +380,22 @@ class ShopController extends Controller
         $tenant = $this->tenant($r);
         $user = Auth::user();
         if (!$user) return redirect()->route('web.login');
-        $tid = $tenant? $tenant->id : ( \App\Models\Tenant::where('slug','demo')->value('id') ?? 1);
+        $tid = $this->tenantId($r);
+        if (!$tid) return redirect('/')->with('error','请从商户店铺访问签到页');
         $profile = \App\Models\MemberProfile::with('level')->where('tenant_id',$tid)->where('user_id',$user->id)->first();
         $todayDone = \App\Models\CheckIn::where('tenant_id',$tid)->where('user_id',$user->id)->whereDate('checked_in_at', today())->exists();
-        $streak = 0; $cursor = today()->subDay();
-        // 若今日已签则从今日算，否则从昨天算
-        $start = $todayDone ? today() : today()->subDay();
-        $cursor = $start;
-        while(true){
-            $has = \App\Models\CheckIn::where('tenant_id',$tid)->where('user_id',$user->id)->whereDate('checked_in_at', $cursor)->exists();
-            if (!$has) break;
-            $streak++; $cursor = $cursor->subDay();
-            if ($streak>60) break;
-        }
+        $streak = $this->computeStreak($tid, $user->id, $todayDone);
         $history = \App\Models\CheckIn::where('tenant_id',$tid)->where('user_id',$user->id)->orderByDesc('checked_in_at')->limit(30)->get();
+        // 近 7 天日历：一次查询代替 7 次 exists
+        $doneDates = \App\Models\CheckIn::where('tenant_id',$tid)->where('user_id',$user->id)
+            ->where('checked_on','>=', today()->subDays(6)->toDateString())
+            ->pluck('checked_on')
+            ->map(fn($d) => $d->toDateString())
+            ->all();
         $calendar = [];
         for($i=6;$i>=0;$i--){
             $d = today()->subDays($i);
-            $done = \App\Models\CheckIn::where('tenant_id',$tid)->where('user_id',$user->id)->whereDate('checked_in_at',$d)->exists();
-            $calendar[] = ['date'=>$d->format('m-d'),'week'=>$d->format('D'),'done'=>$done,'isToday'=>$d->isToday()];
+            $calendar[] = ['date'=>$d->format('m-d'),'week'=>$d->format('D'),'done'=>in_array($d->toDateString(), $doneDates, true),'isToday'=>$d->isToday()];
         }
         return view('shop.checkin', compact('tenant','user','profile','todayDone','streak','history','calendar'));
     }

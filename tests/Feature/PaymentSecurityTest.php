@@ -182,7 +182,28 @@ PEM;
         config(['payments.mock_enabled' => false]);
         $member = $this->memberUser();
         // 钱包渠道 0 元单：不应抛"生产禁 mock"，直接成功
-        $payment = app(PaymentService::class)->create($this->tenantId(), $member->id, 'wallet_recharge', 0, 'wallet');
+        // （wallet_recharge 业务不允许走 wallet 渠道，这里用 other 业务验证 0 元路径）
+        $payment = app(PaymentService::class)->create($this->tenantId(), $member->id, 'other', 0, 'wallet');
         $this->assertTrue($payment->isPaid());
+    }
+
+    public function test_wallet_recharge_via_wallet_channel_is_rejected(): void
+    {
+        $this->seedDemo();
+        // 钱包充值用余额支付 = 扣了又充，净额为零且退款时凭空加钱，必须拒绝
+        $this->expectException(\InvalidArgumentException::class);
+        app(PaymentService::class)->create(
+            $this->tenantId(), $this->memberUser()->id, 'wallet_recharge', 100, 'wallet'
+        );
+    }
+
+    public function test_wallet_channel_respects_enabled_switch(): void
+    {
+        $this->seedDemo();
+        config(['payments.wallet_enabled' => false]);
+        $this->expectException(\InvalidArgumentException::class);
+        app(PaymentService::class)->create(
+            $this->tenantId(), $this->memberUser()->id, 'other', 50, 'wallet'
+        );
     }
 }

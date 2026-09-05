@@ -24,7 +24,7 @@ class OrderController extends Controller
 
     public function productShow(Request $r, int $id)
     {
-        $p = Product::with('shop')->findOrFail($id);
+        $p = Product::with('shop')->where('status','on_sale')->findOrFail($id);
         return response()->json($p);
     }
 

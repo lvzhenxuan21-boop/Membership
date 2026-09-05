@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\Subscription;
 use App\Services\Payments\PaymentGatewayFactory;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -37,6 +38,13 @@ class PaymentService
             if ($gateway->isMockMode() && !PaymentGatewayFactory::mockAllowed()) {
                 throw new \RuntimeException("渠道 {$channel} 未配置真实密钥，生产环境禁止降级 Mock");
             }
+        }
+        // 余额渠道防护：钱包充值不能用自己的余额付（扣了又充，净额为零还会污染账务）；开关未开时拒绝
+        if ($businessType === 'wallet_recharge' && $channel === 'wallet') {
+            throw new \InvalidArgumentException('钱包充值不能使用余额支付渠道');
+        }
+        if ($channel === 'wallet' && !config('payments.wallet_enabled', true)) {
+            throw new \InvalidArgumentException('余额支付渠道未开启');
         }
 
         // 订阅类型金额一律以套餐价为准，忽略调用方传入金额（防改价），后续优惠券按套餐价计算
@@ -111,43 +119,55 @@ class PaymentService
 
             // 0元单跳过网关直接成功（不强制 mock 渠道）
             if ((float)$payment->amount === 0.0) {
-                $this->markPaid($payment);
-                return $payment->fresh();
+                return $this->markPaid($payment)->fresh();
             }
 
-            // 调网关
+            // 余额扣款是本地库操作：留在事务内，余额不足时随整单原子回滚，不产生死单
+            if ($channel === 'wallet') {
+                $payData = PaymentGatewayFactory::make('wallet')->pay($payment);
+                $payment->update(['channel_data'=>$payData]);
+                return $this->markPaid($payment, $payData['balance_after'] ?? null)->fresh();
+            }
+
+            return $payment->fresh(); // pending，网关调用在事务提交后进行
+        });
+
+        // 外部网关（Stripe/微信/支付宝真实 HTTP 调用）在事务提交后执行，
+        // 避免网关等待期间长时间持有优惠券名额等行锁；失败不抛出，支付单保持 pending 可重试
+        if ($payment->status === 'pending') {
             $gateway = PaymentGatewayFactory::make($channel);
             try {
                 $payData = $gateway->pay($payment);
-                // 钱包网关已在内部完成扣款，若返回 wallet_paid 则直接标记成功
-                if (!empty($payData['wallet_paid'])) {
-                    $payment->update(['channel_data'=>$payData]);
-                    $payment = $this->markPaid($payment, $payData['balance_after'] ?? null);
-                    return $payment->fresh();
-                }
                 $payment->update(['pay_url'=>$payData['pay_url'] ?? null, 'channel_data'=>$payData]);
             } catch (\Throwable $e) {
                 $payment->update(['channel_data'=>['error'=>$e->getMessage()]]);
-                // 钱包渠道无外部重试语义（余额不足等），直接失败避免产生永远付不掉的死单
-                if ($channel === 'wallet') throw $e;
-                // 其他渠道不抛异常，让前端可重试；支付单保持 pending
             }
+        }
 
-            return $payment->fresh();
-        });
+        return $payment->fresh();
     }
 
-    public function markPaid(Payment $payment, $extra = null): Payment
+    public function markPaid(Payment $payment, $extra = null, bool $allowLate = false): Payment
     {
         if ($payment->isPaid()) return $payment;
         if (!$payment->isPending()) throw new \RuntimeException('仅待支付订单可标记支付');
 
-        return DB::transaction(function () use ($payment, $extra) {
+        return DB::transaction(function () use ($payment, $extra, $allowLate) {
             $payment = Payment::where('id',$payment->id)->lockForUpdate()->first();
             if ($payment->isPaid()) return $payment;
-            if ($payment->isExpired()) throw new \RuntimeException('支付已超时');
+            $late = $payment->isExpired();
+            if ($late && !$allowLate) throw new \RuntimeException('支付已超时');
 
-            $payment->update(['status'=>'paid','paid_at'=>now(),'callback_data'=>['manual_mark'=>true, 'extra'=>$extra]]);
+            // 合并保留既有 callback_data（此前会整体覆盖，丢失网关原始报文）
+            $callbackData = array_merge($payment->callback_data ?? [], ['manual_mark'=>true, 'extra'=>$extra]);
+            if ($late) {
+                // 网关已确认收款但本地已过有效期：补核销并打晚到标记，钱不能吞
+                $callbackData['late_mark'] = true;
+                Log::warning('[PaymentService] 晚到款核销：支付单已过有效期但网关确认收款', [
+                    'order_no'=>$payment->order_no, 'channel'=>$payment->channel,
+                ]);
+            }
+            $payment->update(['status'=>'paid','paid_at'=>now(),'callback_data'=>$callbackData]);
 
             // 触发业务
             $this->handleBusinessSuccess($payment);
@@ -242,17 +262,41 @@ class PaymentService
             return $payment;
         }
 
+        // 网关已确认收款：
+        if (!$payment->isPending()) {
+            // 已取消/失败的单不能自动复活（库存/优惠券名额可能已释放），落库留痕并告警人工核实
+            $payment->update(['callback_data' => array_merge($payment->callback_data ?? [], [
+                'late_payment_unresolved' => true, 'gateway_payload' => $payload,
+            ])]);
+            Log::critical('[PaymentService] 网关回调确认收款但支付单状态为 '.$payment->status.'，需人工核实', [
+                'order_no'=>$orderNo, 'channel'=>$channel,
+            ]);
+            return $payment;
+        }
+
         $payment->update(['callback_data'=>$payload]);
-        return $this->markPaid($payment);
+        // 网关确认收款即核销：即使已过有效期（allowLate）也补账，避免"钱收了、单没核"的资金悬空
+        return $this->markPaid($payment, null, true);
     }
 
     public function query(Payment $payment): array
     {
         $gateway = PaymentGatewayFactory::make($payment->channel);
         $result = $gateway->query($payment);
+        $gatewayPaid = in_array($result['status'] ?? null, ['paid','succeeded'], true);
         // 主动对账兜底：网关侧已支付但本单仍 pending（如 webhook 不可达时），以查询结果核销
-        if ($payment->isPending() && in_array($result['status'] ?? null, ['paid','succeeded'], true)) {
-            try { $this->markPaid($payment); } catch (\Throwable $e) { /* 过期/已取消等，忽略 */ }
+        if ($payment->isPending() && $gatewayPaid) {
+            try { $this->markPaid($payment, null, true); } catch (\Throwable $e) {
+                Log::warning('[PaymentService] 对账核销失败: '.$e->getMessage(), ['order_no'=>$payment->order_no]);
+            }
+        } elseif (!$payment->isPending() && $gatewayPaid) {
+            // 已取消/失败但网关侧已支付：留痕告警，人工处理（不能自动复活）
+            $payment->update(['callback_data' => array_merge($payment->callback_data ?? [], [
+                'late_payment_unresolved' => true, 'query_status' => $result['status'] ?? null,
+            ])]);
+            Log::critical('[PaymentService] 对账发现网关已收款但支付单状态为 '.$payment->status.'，需人工核实', [
+                'order_no'=>$payment->order_no,
+            ]);
         }
         return $result;
     }

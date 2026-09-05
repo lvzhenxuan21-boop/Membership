@@ -18,4 +18,13 @@ return [
 
     // 同一 IP 每日最多签到账号次数（防脚本批量刷）
     'checkin_ip_daily_limit' => env('MEMBERSHIP_CHECKIN_IP_LIMIT', 20),
+
+    // 自助开店是否自动激活：生产建议 false（开店后置 pending，由平台在后台审核激活）
+    'tenant_auto_activate' => env('MEMBERSHIP_TENANT_AUTO_ACTIVATE', true),
+
+    // 裸域访问 /pricing /me /check-in 等页面时的兜底商户 slug；为空则这些页面要求从商户站点进入
+    'default_tenant_slug' => env('MEMBERSHIP_DEFAULT_TENANT_SLUG', 'demo'),
+
+    // 单用户最多同时存在的未支付订单数（pending 订单锁库存，防脚本刷单占压库存；0=不限制）
+    'max_pending_orders' => env('MEMBERSHIP_MAX_PENDING_ORDERS', 5),
 ];

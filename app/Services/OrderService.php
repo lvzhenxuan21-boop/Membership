@@ -31,6 +31,12 @@ class OrderService
             throw new \InvalidArgumentException('店铺已关闭');
         }
 
+        // 未支付订单上限：pending 订单锁库存 30 分钟才被自动取消，防脚本刷单长期占压库存
+        $pendingCap = (int) config('membership.max_pending_orders', 5);
+        if ($pendingCap > 0 && Order::where('user_id', $user->id)->where('status', 'pending')->count() >= $pendingCap) {
+            throw new \RuntimeException("您已有 {$pendingCap} 笔未支付订单，请先完成支付或取消后再下单");
+        }
+
         return DB::transaction(function () use ($user, $shop, $items, $channel, $couponId, $address, $usePoints) {
             $orderNo = 'ORD'.date('YmdHis').strtoupper(Str::random(6));
             $total = 0;
@@ -111,7 +117,13 @@ class OrderService
                     'meta'=>['order_no'=>$orderNo, 'shop_id'=>$shop->id],
                 ]
             );
-            $order->update(['payment_order_no'=>$payment->order_no]);
+            // 优惠券折扣在支付单内按规则重算并核销名额；回写订单保持口径一致：
+            // total_amount = discount_amount(等级+券) + points_amount + pay_amount
+            $order->update([
+                'payment_order_no'=>$payment->order_no,
+                'discount_amount'=>round((float)$order->discount_amount + (float)$payment->discount_amount, 2),
+                'pay_amount'=>(float)$payment->amount,
+            ]);
 
             return $order->fresh()->load('items','shop');
         });

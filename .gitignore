@@ -37,3 +37,6 @@ Thumbs.db
 /storage/framework/sessions/
 /storage/framework/views/
 /storage/logs/
+
+# Local AI assistant memory
+.workbuddy/
