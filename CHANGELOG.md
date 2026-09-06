@@ -12,6 +12,10 @@
 - **后台会员调整入口**：「调整积分 / 调整余额」Action，经 MembershipService 产生流水，与 API 端权限对齐
 - 支付接入文档 `docs/payment-integration.md`；API 文档（scramble，`/docs/api`，local 环境）
 - 品牌名去硬编码：统一读 `APP_NAME`，买家改 `.env` 即完成白标
+- 商品封面图片上传（FileUpload + `storage:link`，兼容旧 URL 数据）；购物车按租户隔离，跨店不再混单
+- 审计日志后台可视化（系统管理 → 审计日志，只读）
+- 基础安全响应头（X-Frame-Options / nosniff / Referrer-Policy / Permissions-Policy）
+- 认证邮件队列化（验证/重置邮件不阻塞请求，`QUEUE_CONNECTION=database` + queue:work 生效）
 
 ### 收紧/修复
 - 支付宝/微信退款不再谎报成功（明确报错转人工），对账兜底只对真实渠道生效

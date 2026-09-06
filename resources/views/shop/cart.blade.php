@@ -46,14 +46,15 @@
     </div>
 </div>
 @push('scripts')
+@php $cartKey = 'cart_'.($tenant?->slug ?? config('membership.default_tenant_slug','demo')); @endphp
 <script>
 function cartPage(){
     return {
         items:[],
         get total(){ return this.items.reduce((s,i)=>s+i.price*i.quantity,0)},
         get count(){ return this.items.reduce((s,i)=>s+i.quantity,0)},
-        load(){ try{ this.items=JSON.parse(localStorage.getItem('cart')||'[]')}catch(e){this.items=[]} },
-        save(){ localStorage.setItem('cart', JSON.stringify(this.items)) },
+        load(){ try{ this.items=JSON.parse(localStorage.getItem('{{ $cartKey }}')||'[]')}catch(e){this.items=[]} },
+        save(){ localStorage.setItem('{{ $cartKey }}', JSON.stringify(this.items)) },
         inc(i){ this.items[i].quantity++; this.save() },
         dec(i){ if(this.items[i].quantity>1) this.items[i].quantity--; this.save() },
         rm(i){ this.items.splice(i,1); this.save() },

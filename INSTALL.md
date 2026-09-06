@@ -42,11 +42,15 @@ npm run dev     # 开发热更新
 ### 生产优化
 
 ```bash
+php artisan storage:link    # 商品封面图片上传依赖 public 磁盘软链
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 php artisan filament:upgrade
 ```
+
+> 认证邮件（验证/重置）已实现队列化：`.env` 设 `QUEUE_CONNECTION=database` 并用 supervisor 常驻
+> `php artisan queue:work`，即可让 SMTP 慢时不再阻塞注册/找回请求；保持 `sync` 则行为同旧版。
 
 确保 `storage/` 与 `bootstrap/cache/` 可写：
 
@@ -133,6 +137,7 @@ APP_URL=https://xxx.com            # 子域名按此拼接，影响域名预览/
 TRUSTED_PROXIES=*                  # nginx/CDN 后必须设置，否则限流与签到 IP 风控全部失效
 MEMBERSHIP_TENANT_AUTO_ACTIVATE=false   # 生产强烈建议：新店铺进后台审核后再激活
 PAYMENT_MOCK_ENABLED=              # 保持为空/false
+SESSION_SECURE_COOKIE=true         # HTTPS 站点必配：Cookie 仅经加密连接传输
 ```
 
 > 安全提示：`TRUSTED_PROXIES=*` 仅适用于所有流量都经过可信代理的场景。

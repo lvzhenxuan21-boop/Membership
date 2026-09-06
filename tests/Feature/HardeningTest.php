@@ -289,4 +289,15 @@ class HardeningTest extends TestCase
         $this->assertEquals('¥ 10.00', $stats[0]->getValue(), '累计佣金只计已收订单');
         $this->assertEquals('¥ 200.00', $stats[3]->getValue(), 'GMV 只计已收订单');
     }
+
+    // ---------- 安全响应头 ----------
+
+    public function test_security_headers_are_set_on_responses(): void
+    {
+        $this->seedDemo();
+        $this->get('/')
+            ->assertHeader('X-Frame-Options', 'DENY')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    }
 }

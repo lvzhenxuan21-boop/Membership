@@ -30,6 +30,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // api + web 自动解析子域名租户，控制器可通过 $request->attributes->get('tenant')
         $middleware->appendToGroup('api', \App\Http\Middleware\ResolveTenant::class);
         $middleware->appendToGroup('web', \App\Http\Middleware\ResolveTenant::class);
+        // 基础安全响应头（防点击劫持/内容嗅探/引用泄漏）
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

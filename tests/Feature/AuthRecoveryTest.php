@@ -32,7 +32,7 @@ class AuthRecoveryTest extends TestCase
 
         Notification::assertSentTo(
             User::where('email', 'demo@member.com')->firstOrFail(),
-            \Illuminate\Auth\Notifications\ResetPassword::class
+            \App\Notifications\QueuedResetPassword::class // 队列版通知（继承 ResetPassword）
         );
     }
 

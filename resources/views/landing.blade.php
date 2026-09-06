@@ -71,7 +71,7 @@
                         <div class="grid grid-cols-3 gap-2 p-3 bg-white">
                             @forelse($samples as $sp)
                                 <a href="/products/{{ $sp->id }}" class="block aspect-[4/3] rounded-xl overflow-hidden border border-[var(--line)] relative group">
-                                    <img src="{{ $sp->cover }}" alt="{{ $sp->name }}" class="w-full h-full object-cover group-hover:scale-[1.06] transition duration-500">
+                                    <img src="{{ $sp->cover_url }}" alt="{{ $sp->name }}" class="w-full h-full object-cover group-hover:scale-[1.06] transition duration-500">
                                     <span class="absolute bottom-0 left-0 right-0 mono text-[9px] text-center bg-white/80 backdrop-blur py-0.5 truncate">{{ $sp->name }}</span>
                                 </a>
                             @empty

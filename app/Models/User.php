@@ -26,6 +26,18 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, HasRoles, Billable, HasApiTokens, MustVerifyEmailTrait;
 
+    // 认证邮件走队列（App\Notifications\Queued* 实现 ShouldQueue），
+    // QUEUE_CONNECTION=sync 时自动退化为同步发送
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new \App\Notifications\QueuedResetPassword($token));
+    }
+
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new \App\Notifications\QueuedVerifyEmail);
+    }
+
     public function canAccessPanel(Panel $panel): bool
     {
         // 平台管理员直接放行；商户角色(tenant_admin/staff)必须归属某个租户才能进后台

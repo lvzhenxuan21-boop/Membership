@@ -49,13 +49,14 @@
     </div>
 </div>
 @push('scripts')
+@php $cartKey = 'cart_'.($tenant?->slug ?? config('membership.default_tenant_slug','demo')); @endphp
 <script>
 function checkoutPage(){
     return {
         items:[], shopId:'',
         get total(){ return this.items.reduce((s,i)=>s+i.price*i.quantity,0)},
-        load(){ try{ this.items=JSON.parse(localStorage.getItem('cart')||'[]')}catch(e){this.items=[]}; if(this.items.length) this.shopId=this.items[0].shop_id },
-        onSubmit(e){ if(this.items.length===0){ e.preventDefault(); alert('购物车为空'); return; } setTimeout(()=>{ if(document.querySelector('.bg-emerald-50')) localStorage.removeItem('cart') }, 500); }
+        load(){ try{ this.items=JSON.parse(localStorage.getItem('{{ $cartKey }}')||'[]')}catch(e){this.items=[]}; if(this.items.length) this.shopId=this.items[0].shop_id },
+        onSubmit(e){ if(this.items.length===0){ e.preventDefault(); alert('购物车为空'); return; } setTimeout(()=>{ if(document.querySelector('.bg-emerald-50')) localStorage.removeItem('{{ $cartKey }}') }, 500); }
     }
 }
 </script>

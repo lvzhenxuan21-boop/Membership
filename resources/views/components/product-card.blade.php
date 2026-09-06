@@ -2,7 +2,7 @@
 <a href="{{ route('web.products.show', $product->id) }}" class="group bg-white rounded-[20px] border border-[var(--line)] overflow-hidden flex flex-col soft soft-hover lift">
     <div class="aspect-[4/3] bg-[var(--paper2)] overflow-hidden relative">
         @if($product->cover)
-            <img src="{{ $product->cover }}" alt="{{ $product->name }}" class="w-full h-full object-cover group-hover:scale-[1.04] transition duration-700">
+            <img src="{{ $product->cover_url }}" alt="{{ $product->name }}" class="w-full h-full object-cover group-hover:scale-[1.04] transition duration-700">
         @else
             <div class="w-full h-full grid place-items-center mono text-xs opacity-30">NO IMAGE</div>
         @endif

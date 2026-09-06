@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Products\Schemas;
 
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
@@ -20,7 +21,15 @@ class ProductForm
             TextInput::make('original_price')->numeric()->prefix('¥'),
             TextInput::make('stock')->numeric()->default(100)->required(),
             Select::make('status')->options(['draft'=>'草稿','on_sale'=>'上架','off_sale'=>'下架'])->default('on_sale')->required(),
-            TextInput::make('cover')->label('封面URL'),
+            // 封面上传至 public 磁盘（部署需 php artisan storage:link）；兼容旧数据的完整 URL
+            FileUpload::make('cover')
+                ->label('商品封面')
+                ->image()
+                ->disk('public')
+                ->directory('products')
+                ->maxSize(4096)
+                ->imageEditor()
+                ->columnSpanFull(),
             Textarea::make('description')->columnSpanFull(),
         ]);
     }

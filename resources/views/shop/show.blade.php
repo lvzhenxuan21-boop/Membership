@@ -4,7 +4,7 @@
 <div class="grid lg:grid-cols-[1.1fr_0.9fr] gap-6">
     <div class="rounded-[24px] bg-white border border-[var(--line)] overflow-hidden soft">
         <div class="aspect-[4/3] bg-[var(--paper2)] relative">
-            @if($product->cover)<img src="{{ $product->cover }}" class="w-full h-full object-cover">@else<div class="w-full h-full grid place-items-center mono text-xs opacity-30">NO IMAGE</div>@endif
+            @if($product->cover)<img src="{{ $product->cover_url }}" class="w-full h-full object-cover">@else<div class="w-full h-full grid place-items-center mono text-xs opacity-30">NO IMAGE</div>@endif
             <div class="absolute bottom-3 left-3 flex gap-2 mono text-xs">
                 <span class="px-2.5 py-1 rounded-full bg-white/90 backdrop-blur border border-[var(--line)]">库存 {{ $product->stock }}</span>
                 <span class="px-2.5 py-1 rounded-full bg-white/90 backdrop-blur border border-[var(--line)]">销量 {{ $product->sales }}</span>
@@ -33,7 +33,7 @@
                     <span class="w-10 text-center mono text-sm font-semibold" x-text="qty"></span>
                     <button @click="qty=Math.min({{ $product->stock }},qty+1)" class="w-8 h-8 rounded-full bg-white border border-[var(--line)] grid place-items-center hover:bg-zinc-50">+</button>
                 </div>
-                <button onclick="addToCart({{ $product->id }}, {{ $product->shop_id }}, @js($product->name), '{{ $product->price }}', @js($product->cover), @js($product->shop->name), parseInt(this.closest('[x-data]').__x.$data.qty||1));"
+                <button onclick="addToCart({{ $product->id }}, {{ $product->shop_id }}, @js($product->name), '{{ $product->price }}', @js($product->cover_url), @js($product->shop->name), parseInt(this.closest('[x-data]').__x.$data.qty||1));"
                         class="flex-1 h-10 rounded-full bg-[var(--accent)] text-white font-semibold hover:bg-[#E63600] soft">加入购物车</button>
                 <a href="{{ route('web.cart') }}" class="h-10 px-5 grid place-items-center rounded-full bg-[var(--ink)] text-white text-sm font-medium hover:bg-black">去结算</a>
             </div>
@@ -46,7 +46,7 @@
             <div class="grid grid-cols-2 divide-x divide-[var(--line)]">
                 @foreach($related as $rp)
                     <a href="{{ route('web.products.show',$rp->id) }}" class="flex gap-3 p-3 hover:bg-[var(--paper2)] transition">
-                        <div class="w-16 h-16 rounded-xl bg-[var(--paper2)] border border-[var(--line)] overflow-hidden shrink-0">@if($rp->cover)<img src="{{ $rp->cover }}" class="w-full h-full object-cover">@endif</div>
+                        <div class="w-16 h-16 rounded-xl bg-[var(--paper2)] border border-[var(--line)] overflow-hidden shrink-0">@if($rp->cover)<img src="{{ $rp->cover_url }}" class="w-full h-full object-cover">@endif</div>
                         <div class="min-w-0"><div class="text-sm font-medium leading-tight line-clamp-2">{{ $rp->name }}</div><div class="serif font-bold mt-1">¥{{ rtrim(rtrim(number_format($rp->price,2),'0'),'.') }}</div></div>
                     </a>
                 @endforeach
@@ -56,11 +56,12 @@
     </div>
 </div>
 @push('scripts')
+@php $cartKey = 'cart_'.($tenant?->slug ?? config('membership.default_tenant_slug','demo')); @endphp
 <script>
 function addToCart(id, shop_id, name, price, cover, shop_name, qty){
     qty = qty||1;
     let cart = [];
-    try{ cart = JSON.parse(localStorage.getItem('cart')||'[]') }catch(e){ cart=[] }
+    try{ cart = JSON.parse(localStorage.getItem('{{ $cartKey }}')||'[]') }catch(e){ cart=[] }
     if(cart.length && cart[0].shop_id !== shop_id){
         if(!confirm('购物车已有其他店铺商品，清空后加入？')) return;
         cart=[];
@@ -69,7 +70,7 @@ function addToCart(id, shop_id, name, price, cover, shop_name, qty){
         let f=cart.find(x=>x.id===id);
         if(f) f.quantity++; else cart.push({id, shop_id, name, price:parseFloat(price), cover, shop_name, quantity:1});
     }
-    localStorage.setItem('cart', JSON.stringify(cart));
+    localStorage.setItem('{{ $cartKey }}', JSON.stringify(cart));
     let t=document.createElement('div'); t.textContent='已加入购物车 ×'+qty; t.className='fixed bottom-6 left-1/2 -translate-x-1/2 bg-[var(--ink)] text-white mono text-sm px-4 py-2 rounded-full soft z-50'; document.body.appendChild(t); setTimeout(()=>{t.remove(); location.reload()}, 700);
 }
 </script>
