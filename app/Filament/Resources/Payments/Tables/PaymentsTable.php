@@ -4,15 +4,21 @@ namespace App\Filament\Resources\Payments\Tables;
 
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Table;
 use App\Services\PaymentService;
+use Illuminate\Support\Facades\Log;
 
 class PaymentsTable
 {
+    // 核销/退款属资金操作，与 API 端 role:super_admin|admin|tenant_admin 保持一致
+    private static function isAdmin(): bool
+    {
+        return auth()->user()?->hasAnyRole(['super_admin','admin','tenant_admin']) ?? false;
+    }
+
     public static function configure(Table $table): Table
     {
         return $table
@@ -32,24 +38,34 @@ class PaymentsTable
             ])
             ->filters([])
             ->recordActions([
-                EditAction::make(),
+                ViewAction::make(), // 详情只读：直接改行会绕过 PaymentService 业务钩子（见 PaymentPolicy）
                 Action::make('markPaid')
                     ->label('标记已付')
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
-                    ->visible(fn($record)=> $record->status==='pending')
+                    ->visible(fn($record)=> $record->status==='pending' && self::isAdmin())
                     ->requiresConfirmation()
                     ->action(function ($record) {
-                        app(PaymentService::class)->markPaid($record);
+                        try {
+                            app(PaymentService::class)->markPaid($record);
+                        } catch (\Throwable $e) {
+                            Log::warning('[Filament] 手动核销失败', ['order_no'=>$record->order_no, 'error'=>$e->getMessage()]);
+                            \Filament\Notifications\Notification::make()->title('核销失败：'.$e->getMessage())->danger()->send();
+                        }
                     }),
                 Action::make('refund')
                     ->label('退款')
                     ->icon('heroicon-o-arrow-path')
                     ->color('danger')
-                    ->visible(fn($record)=> $record->status==='paid')
+                    ->visible(fn($record)=> $record->status==='paid' && self::isAdmin())
                     ->requiresConfirmation()
                     ->action(function ($record) {
-                        app(PaymentService::class)->refund($record);
+                        try {
+                            app(PaymentService::class)->refund($record);
+                        } catch (\Throwable $e) {
+                            Log::warning('[Filament] 退款失败', ['order_no'=>$record->order_no, 'error'=>$e->getMessage()]);
+                            \Filament\Notifications\Notification::make()->title('退款失败：'.$e->getMessage())->danger()->send();
+                        }
                     }),
             ])
             ->toolbarActions([BulkActionGroup::make([DeleteBulkAction::make()])]);

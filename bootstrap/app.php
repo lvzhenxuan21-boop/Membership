@@ -17,6 +17,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant' => \App\Http\Middleware\ResolveTenant::class,
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
         ]);
+        // 信任反向代理（nginx/CDN），否则 request()->ip() 恒为代理 IP：
+        // 登录/下单限流、签到 IP 风控会把所有用户算成同一个 IP。
+        // TRUSTED_PROXIES: * 或逗号分隔的 IP/CIDR（如 127.0.0.1,10.0.0.0/8）；留空=不信任（直连部署）
+        $proxies = env('TRUSTED_PROXIES');
+        if (!empty($proxies)) {
+            $middleware->trustProxies(at: trim($proxies) === '*' ? '*' : array_map('trim', explode(',', $proxies)));
+        }
         // 允许同域 web session（前端 fetch 携带 cookie）通过 api 认证，配合 auth:sanctum
         $middleware->statefulApi();
         // api + web 自动解析子域名租户，控制器可通过 $request->attributes->get('tenant')

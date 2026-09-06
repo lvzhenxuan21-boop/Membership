@@ -2,16 +2,23 @@
 
 namespace App\Filament\Resources\Orders\Tables;
 
-use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Actions\Action;
 use App\Models\Order;
 use App\Services\PaymentService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrdersTable
 {
+    // 订单核销属资金操作，与 API 端管理员权限保持一致
+    private static function isAdmin(): bool
+    {
+        return auth()->user()?->hasAnyRole(['super_admin','admin','tenant_admin']) ?? false;
+    }
+
     public static function configure(Table $table): Table
     {
         return $table->columns([
@@ -26,19 +33,32 @@ class OrdersTable
             TextColumn::make('paid_at')->dateTime()->sortable(),
             TextColumn::make('created_at')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault:true),
         ])->filters([])->recordActions([
-            EditAction::make(),
-            Action::make('markPaid')->label('标记已付')->visible(fn(Order $r)=> $r->status==='pending')->requiresConfirmation()->action(function (Order $record) {
-                // 通过关联 Payment 标记
-                $payment = \App\Models\Payment::where('order_no', $record->payment_order_no)->first();
-                if ($payment) app(PaymentService::class)->markPaid($payment);
-                else {
-                    DB::transaction(function () use ($record) {
-                        $record->update(['status'=>'paid','paid_at'=>now()]);
-                        $record->shop->products()->whereIn('id', $record->items->pluck('product_id'))->increment('sales', 1);
-                    });
-                }
-            }),
+            ViewAction::make(), // 详情只读：手改状态/金额会绕过业务钩子
+            Action::make('markPaid')->label('标记已付')
+                ->visible(fn(Order $r)=> $r->status==='pending' && self::isAdmin())
+                ->requiresConfirmation()
+                ->action(function (Order $record) {
+                    // 优先走关联支付单（业务钩子：销量/订阅/券核销都在那里面）
+                    $payment = \App\Models\Payment::where('order_no', $record->payment_order_no)->first();
+                    try {
+                        if ($payment) {
+                            app(PaymentService::class)->markPaid($payment);
+                            return;
+                        }
+                        // 无支付单的兜底：手动复刻核销语义（销量按购买数量累计）
+                        DB::transaction(function () use ($record) {
+                            $record->update(['status'=>'paid','paid_at'=>now()]);
+                            foreach ($record->items as $item) {
+                                \App\Models\Product::where('id', $item->product_id)->increment('sales', $item->quantity);
+                            }
+                        });
+                    } catch (\Throwable $e) {
+                        Log::warning('[Filament] 订单核销失败', ['order_no'=>$record->order_no, 'error'=>$e->getMessage()]);
+                        \Filament\Notifications\Notification::make()->title('核销失败：'.$e->getMessage())->danger()->send();
+                    }
+                }),
             Action::make('ship')->label('发货')->visible(fn(Order $r)=> $r->status==='paid')->action(fn(Order $r)=> $r->update(['status'=>'shipped'])),
+            Action::make('complete')->label('完成')->visible(fn(Order $r)=> $r->status==='shipped')->requiresConfirmation()->action(fn(Order $r)=> $r->update(['status'=>'completed'])),
         ]);
     }
 }

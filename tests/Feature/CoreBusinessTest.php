@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\MemberProfile;
 use App\Models\MembershipLevel;
+use App\Models\MembershipPlan;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Product;
@@ -37,6 +38,13 @@ class CoreBusinessTest extends TestCase
     private function tenantId(): int
     {
         return Tenant::where('slug', 'demo')->firstOrFail()->id;
+    }
+
+    // 套餐动态查询且必须 orderBy：MySQL 走 (tenant_id, slug) 索引返回字母序，
+    // 不加排序会取到 lifetime 而非 monthly（SQLite 全表扫描按插入序碰巧正确）
+    private function planId(): int
+    {
+        return MembershipPlan::where('tenant_id', $this->tenantId())->where('slug', 'monthly')->firstOrFail()->id;
     }
 
     private function makeShop(): Shop
@@ -259,7 +267,7 @@ class CoreBusinessTest extends TestCase
         $svc = app(MembershipService::class);
         $user = $this->memberUser();
         // 月卡VIP: FREE_SHIPPING 配额 5 次
-        $sub = $svc->subscribe($this->tenantId(), $user->id, 1);
+        $sub = $svc->subscribe($this->tenantId(), $user->id, $this->planId());
 
         for ($i = 0; $i < 5; $i++) {
             $this->assertTrue($svc->consumeFeature($sub->id, 'FREE_SHIPPING'));
@@ -275,7 +283,7 @@ class CoreBusinessTest extends TestCase
     public function test_consume_feature_not_in_plan_rejected(): void
     {
         $this->seedDemo();
-        $sub = app(MembershipService::class)->subscribe($this->tenantId(), $this->memberUser()->id, 1);
+        $sub = app(MembershipService::class)->subscribe($this->tenantId(), $this->memberUser()->id, $this->planId());
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('未包含在此套餐');

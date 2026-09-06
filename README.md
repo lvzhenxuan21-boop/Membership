@@ -210,6 +210,7 @@ php artisan memberships:relevel        # 每日 02:10：保级周期重算（不
 ## 10. 部署注意
 
 - 生产把 `.env` 中 `APP_ENV=production` `APP_DEBUG=false`，`APP_KEY` 重新生成
+- **泛子域名多租户上线**（泛域名 DNS + 泛域名 SSL + nginx 配置 + `TRUSTED_PROXIES`）见 `INSTALL.md`「生产部署」一节，含可复制的完整 nginx 配置
 - `DB_CONNECTION` 切 MySQL 时取消注释 `DB_HOST/PORT/DATABASE/USERNAME/PASSWORD`
 - **必须部署 scheduler**（见第 9 节 cron），否则过期取消/到期提醒/保级降级不会运行
 - `php artisan config:cache && php artisan route:cache && php artisan view:cache`
