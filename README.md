@@ -108,6 +108,8 @@ npm install && npm run build
 # 认证（Sanctum Bearer Token）
 POST /api/v1/auth/register                 {name,email,password,tenant_id|tenant_slug,...}
 POST /api/v1/auth/login                    {email,password} -> token
+POST /api/v1/auth/forgot-password          发送密码重置邮件（防枚举，限流）
+POST /api/v1/auth/reset-password           重置密码 {email,token,password}
 POST /api/v1/auth/logout / GET /me / PUT /profile    （需 Bearer token）
 
 # B 端入驻
@@ -153,6 +155,7 @@ app(\App\Services\MembershipService::class)->consumeFeature($subscriptionId, 'FR
 
 > `membership` 写操作与商城下单建议生产环境补 `auth:sanctum`；`mark-paid`/`refund`/`cancel` 已内置鉴权/归属校验。
 > 未配置 STRIPE_SECRET/WECHAT_PAY_* 时相应渠道自动降级 Mock（演示可跑），配置后自动走真实网关。
+> **API 交互文档**：`/docs/api`（OpenAPI 3.1 自动生成，local 环境默认开放，生产环境可用 IP 白名单或按需关闭）。
 
 ---
 

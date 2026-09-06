@@ -27,4 +27,7 @@ return [
 
     // 单用户最多同时存在的未支付订单数（pending 订单锁库存，防脚本刷单占压库存；0=不限制）
     'max_pending_orders' => env('MEMBERSHIP_MAX_PENDING_ORDERS', 5),
+
+    // 邮箱验证：开启后注册触发验证邮件，未验证会员下单/订阅/签到被拦截（需已配置 SMTP）
+    'email_verification' => env('MEMBERSHIP_EMAIL_VERIFICATION', false),
 ];

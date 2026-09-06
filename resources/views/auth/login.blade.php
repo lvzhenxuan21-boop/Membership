@@ -58,10 +58,13 @@
                 登录 — SIGN IN <span class="opacity-60">→</span>
             </button>
 
-            <div class="flex items-center gap-3 py-1">
+            <div class="flex items-center justify-between gap-3 py-1">
                 <span class="h-px flex-1 bg-[var(--line)]"></span>
                 <span class="mono text-[11px] tracking-widest opacity-30">OR</span>
                 <span class="h-px flex-1 bg-[var(--line)]"></span>
+            </div>
+            <div class="text-right -mt-1">
+                <a href="{{ route('web.password.request') }}" class="mono text-[11px] opacity-50 hover:opacity-100">忘记密码？</a>
             </div>
 
             <div class="grid grid-cols-3 gap-2 mono text-[11px]">

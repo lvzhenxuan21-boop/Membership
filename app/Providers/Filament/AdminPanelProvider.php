@@ -30,7 +30,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->brandName('会员系统 Pro')
+            ->brandName(config('app.name', '会员系统 Pro'))
             ->colors([
                 'primary' => Color::Amber,
             ])

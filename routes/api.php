@@ -22,6 +22,9 @@ Route::prefix('v1')->group(function () {
     Route::prefix('auth')->group(function () {
         Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
         Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+        // 密码找回（发链接走邮件，无需登录）
+        Route::post('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'apiSendResetLink'])->middleware('throttle:5,1');
+        Route::post('/reset-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'apiReset'])->middleware('throttle:5,1');
         Route::middleware('auth:sanctum')->group(function () {
             Route::post('/logout', [AuthController::class, 'logout']);
             Route::get('/me', [AuthController::class, 'me']);
@@ -49,7 +52,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/products', [OrderController::class, 'products']);
         Route::get('/products/{id}', [OrderController::class, 'productShow']);
         Route::middleware('auth:sanctum')->group(function () {
-            Route::post('/orders', [OrderController::class, 'create'])->middleware('throttle:10,1'); // 下单限流：pending 订单会锁库存
+            Route::post('/orders', [OrderController::class, 'create'])->middleware(['throttle:10,1', 'verify-email']); // 下单限流 + 邮箱验证门禁
             Route::get('/orders', [OrderController::class, 'list']);
             Route::get('/orders/{orderNo}', [OrderController::class, 'show']);
         });
@@ -62,7 +65,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/webhook/stripe', [PaymentController::class, 'stripeWebhook']); // Stripe 专用
 
         Route::middleware('auth:sanctum')->group(function () {
-            Route::post('/', [PaymentController::class, 'create'])->middleware('throttle:30,1'); // 创建支付单（user_id 取登录态，管理员可代付）
+            Route::post('/', [PaymentController::class, 'create'])->middleware(['throttle:30,1', 'verify-email']); // 创建支付单（user_id 取登录态，管理员可代付）
             Route::get('/', [PaymentController::class, 'list']); // 普通用户仅能看自己的
             Route::get('/{orderNo}', [PaymentController::class, 'show']);
             Route::get('/{orderNo}/query', [PaymentController::class, 'query']);

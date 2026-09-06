@@ -5,11 +5,16 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @php $tenant = isset($tenant) ? $tenant : (app()->bound('currentTenant') ? app('currentTenant') : null); @endphp
-    <title>@yield('title', (($tenant?->name ?? 'Membership Pro').' — 多商户电商 SaaS'))</title>
-    <meta name="description" content="@yield('metaDescription', (($tenant?->name ?? 'Membership Pro').' — 独立域名的品牌网店，会员营销与全渠道收款一站配齐'))">
-    <meta property="og:title" content="@yield('title', (($tenant?->name ?? 'Membership Pro').' — 多商户电商 SaaS'))">
-    <meta property="og:description" content="@yield('metaDescription', 'Membership Pro — 30 秒免费开通属于你的品牌网店')">
+    @php $brandName = $tenant?->name ?? config('app.name', 'Membership Pro'); @endphp
+    <title>@yield('title', ($brandName.' — 多商户电商 SaaS'))</title>
+    <meta name="description" content="@yield('metaDescription', ($brandName.' — 独立域名的品牌网店，会员营销与全渠道收款一站配齐'))">
+    <meta property="og:title" content="@yield('title', ($brandName.' — 多商户电商 SaaS'))">
+    <meta property="og:description" content="@yield('metaDescription', ($brandName.' — 30 秒免费开通属于你的品牌网店'))">
     <meta property="og:type" content="website">
+    <meta property="og:site_name" content="{{ $brandName }}">
+    <meta property="og:url" content="{{ url()->current() }}">
+    <meta name="twitter:card" content="summary">
+    <link rel="canonical" href="{{ url()->current() }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>

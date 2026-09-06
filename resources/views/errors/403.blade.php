@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>无权限访问 — Membership Pro</title>
+<title>无权限访问 — {{ config('app.name', 'Membership Pro') }}</title>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
@@ -20,7 +20,7 @@ body{ background:var(--paper); color:var(--ink); font-family:Inter,system-ui,san
   <header class="max-w-[1280px] mx-auto bg-white/90 backdrop-blur-xl border border-[var(--line)] rounded-full h-[56px] flex items-center gap-3 px-3 soft">
     <a href="/" class="flex items-center gap-3 pl-2">
       <span class="w-9 h-9 rounded-full bg-[var(--ink)] text-white grid place-items-center serif text-[18px]">MP</span>
-      <span class="hidden sm:block leading-none"><span class="serif text-[17px]">Membership Pro</span><span class="mono text-[10px] tracking-[0.16em] opacity-50 block -mt-0.5">MULTI-STORE SAAS</span></span>
+      <span class="hidden sm:block leading-none"><span class="serif text-[17px]">{{ config('app.name', 'Membership Pro') }}</span><span class="mono text-[10px] tracking-[0.16em] opacity-50 block -mt-0.5">MULTI-STORE SAAS</span></span>
     </a>
     <span class="ml-auto mono text-xs opacity-40">403 · 无权限</span>
   </header>
@@ -82,7 +82,7 @@ body{ background:var(--paper); color:var(--ink); font-family:Inter,system-ui,san
 </div>
 
 <footer class="py-6 text-center mono text-xs opacity-40">
-  Membership Pro · shop1.xxx.com 子域隔离 · <a href="/" class="underline">首页</a> · <a href="/api/v1/health" class="underline">API</a>
+  {{ config('app.name', 'Membership Pro') }} · shop1.xxx.com 子域隔离 · <a href="/" class="underline">首页</a> · <a href="/api/v1/health" class="underline">API</a>
 </footer>
 </body>
 </html>

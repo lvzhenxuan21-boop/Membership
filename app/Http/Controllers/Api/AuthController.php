@@ -65,6 +65,10 @@ class AuthController extends Controller
                 'password' => $data['password'],
             ]);
             $user->assignRole('member');
+            // 开启邮箱验证时触发验证邮件（MEMBERSHIP_EMAIL_VERIFICATION）
+            if (config('membership.email_verification')) {
+                $user->sendEmailVerificationNotification();
+            }
 
             // 默认等级与门店
             $level = MembershipLevel::where('tenant_id',$data['tenant_id'])->where('is_default',true)->first()

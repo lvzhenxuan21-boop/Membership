@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant' => \App\Http\Middleware\ResolveTenant::class,
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+            'verify-email' => \App\Http\Middleware\EnsureEmailVerifiedIfRequired::class,
         ]);
         // 信任反向代理（nginx/CDN），否则 request()->ip() 恒为代理 IP：
         // 登录/下单限流、签到 IP 风控会把所有用户算成同一个 IP。

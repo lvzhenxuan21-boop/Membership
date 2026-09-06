@@ -18,6 +18,7 @@
         "spatie/laravel-permission": "^8.3"
     },
     "require-dev": {
+        "dedoc/scramble": "^0.13.42",
         "fakerphp/faker": "^1.23",
         "laravel/pail": "^1.2.5",
         "laravel/pao": "^1.0.6",

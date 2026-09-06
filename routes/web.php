@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Web\ShopController;
+use App\Http\Controllers\Web\VerificationController;
+use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Api\TenantAuthController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
@@ -42,11 +44,27 @@ Route::post('/register', function(Request $r){
         \App\Models\Wallet::firstOrCreate(['tenant_id'=>$tenant->id,'user_id'=>$user->id], ['balance'=>0]);
         return $user;
     });
+    if (config('membership.email_verification')) {
+        $u->sendEmailVerificationNotification();
+    }
     Auth::login($u, true);
-    return redirect('/')->with('success','注册成功，已自动成为普通会员');
+    return redirect('/')->with('success', config('membership.email_verification')
+        ? '注册成功，请先到邮箱完成验证再下单'
+        : '注册成功，已自动成为普通会员');
 })->middleware('throttle:5,1')->name('web.register.post');
 
 Route::post('/logout', function(Request $r){ Auth::logout(); $r->session()->invalidate(); $r->session()->regenerateToken(); return redirect('/'); })->name('web.logout');
+
+// 密码找回（Web 表单 + 邮件重置链接；API 端点在 routes/api.php）
+Route::get('/forgot-password', [PasswordResetController::class, 'requestForm'])->name('web.password.request');
+Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])->middleware('throttle:5,1')->name('web.password.email');
+Route::get('/reset-password/{token}', [PasswordResetController::class, 'resetForm'])->name('password.reset');
+Route::post('/reset-password', [PasswordResetController::class, 'reset'])->middleware('throttle:5,1')->name('web.password.update');
+
+// 邮箱验证（仅 MEMBERSHIP_EMAIL_VERIFICATION=true 时强制，见 EnsureEmailVerifiedIfRequired）
+Route::get('/email/verify', [VerificationController::class, 'notice'])->middleware('auth')->name('web.verification.notice');
+Route::get('/email/verify/{id}/{hash}', [VerificationController::class, 'verify'])->middleware(['auth', 'signed'])->name('verification.verify');
+Route::post('/email/verification-notification', [VerificationController::class, 'resend'])->middleware(['auth', 'throttle:6,1'])->name('web.verification.send');
 
 // B端入驻表单
 Route::get('/tenants/register', function(Request $r){
@@ -97,17 +115,17 @@ Route::post('/tenants/register', function(Request $r){
 
 // 商城前台（tenant 自动解析）
 Route::get('/pricing', [ShopController::class,'pricing'])->name('web.pricing');
-Route::post('/pricing/subscribe', [ShopController::class,'subscribePlan'])->name('web.pricing.subscribe');
+Route::post('/pricing/subscribe', [ShopController::class,'subscribePlan'])->middleware('verify-email')->name('web.pricing.subscribe');
 Route::get('/pay/{orderNo}', [ShopController::class,'payShow'])->name('web.pay.show');
 Route::post('/pay/{orderNo}/switch-channel', [ShopController::class,'switchChannel'])->name('web.pay.switch');
 Route::get('/me', [ShopController::class,'me'])->name('web.me');
 Route::post('/me', [ShopController::class,'updateMe'])->name('web.me.update');
 Route::get('/check-in', [ShopController::class,'checkInPage'])->name('web.checkin');
-Route::post('/check-in', [ShopController::class,'checkIn'])->name('web.checkin.store');
+Route::post('/check-in', [ShopController::class,'checkIn'])->middleware('verify-email')->name('web.checkin.store');
 Route::get('/products/{id}', [ShopController::class,'show'])->name('web.products.show');
 Route::get('/cart', [ShopController::class,'cart'])->name('web.cart');
 Route::get('/checkout', [ShopController::class,'checkout'])->name('web.checkout');
-Route::post('/checkout', [ShopController::class,'placeOrder'])->middleware('throttle:10,1')->name('web.checkout.place');
+Route::post('/checkout', [ShopController::class,'placeOrder'])->middleware(['throttle:10,1', 'verify-email'])->name('web.checkout.place');
 Route::get('/orders', [ShopController::class,'orders'])->name('web.orders');
 Route::get('/orders/{orderNo}', [ShopController::class,'orderShow'])->name('web.orders.show');
 Route::get('/shop/{slug}', [ShopController::class,'index'])->name('web.shop.slug');
