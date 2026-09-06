@@ -57,11 +57,13 @@ class WalletGateway implements GatewayInterface
     public function refund(Payment $payment, ?float $amount = null): array
     {
         $refund = $amount ?? (float)$payment->amount;
-        // 退款回余额
+        // 退款回余额，并同步回调减累计消费统计（支付时记入了 total_consumed，退款不冲减会虚高）
         $wallet = Wallet::where('tenant_id', $payment->tenant_id)->where('user_id', $payment->user_id)->lockForUpdate()->first();
         if ($wallet) {
             $newBalance = bcadd((string)$wallet->balance, (string)$refund, 2);
-            $wallet->update(['balance'=>$newBalance]);
+            $newConsumed = bcsub((string)$wallet->total_consumed, (string)$refund, 2);
+            if (bccomp($newConsumed, '0', 2) < 0) $newConsumed = '0.00';
+            $wallet->update(['balance'=>$newBalance, 'total_consumed'=>$newConsumed]);
             \App\Models\MemberProfile::where('tenant_id',$payment->tenant_id)->where('user_id',$payment->user_id)->update(['balance'=>$newBalance]);
             \App\Models\WalletTransaction::create([
                 'wallet_id'=>$wallet->id,'type'=>'refund','amount'=>$refund,'balance_after'=>$newBalance,

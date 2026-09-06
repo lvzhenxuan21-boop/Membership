@@ -328,8 +328,31 @@ class PaymentService
             if ($fullyRefunded && $fresh->business_type==='subscription' && $fresh->business_id) {
                 Subscription::where('id',$fresh->business_id)->where('status','active')->update(['status'=>'cancelled','cancelled_at'=>now()]);
             }
+            // 订单仅在全额退款时冲销：转 refunded + 回补库存 + 回滚销量 + 退回抵现积分（部分退款订单照常履约）
+            if ($fullyRefunded && $fresh->business_type==='order') {
+                $this->restoreOrderOnRefund($fresh);
+            }
             return $fresh;
         });
+    }
+
+    // 全额退款的订单冲销：与取消订单同口径（库存回补、销量回滚、积分退回）
+    private function restoreOrderOnRefund(Payment $payment): void
+    {
+        $order = \App\Models\Order::where('id', $payment->business_id)
+            ->orWhere('payment_order_no', $payment->order_no)->first();
+        if (!$order || !in_array($order->status, ['paid','shipped','completed'], true)) return;
+        $order->update(['status'=>'refunded']);
+        foreach ($order->items as $item) {
+            \App\Models\Product::where('id', $item->product_id)->increment('stock', $item->quantity);
+            \App\Models\Product::where('id', $item->product_id)->decrement('sales', $item->quantity);
+        }
+        if ((int) $order->points_used > 0) {
+            $this->membershipService->addPoints(
+                $order->tenant_id, $order->user_id, (int) $order->points_used, 'adjust',
+                "订单全额退款退回积分 {$order->order_no}", 'order', $order->id,
+            );
+        }
     }
 
     public function cancel(Payment $payment): Payment

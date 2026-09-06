@@ -142,4 +142,71 @@ class RefundFlowTest extends TestCase
         $this->assertEquals('200.00', (string)$balance(), '退款回余额');
         $this->assertEquals('cancelled', \App\Models\Subscription::findOrFail($payment->business_id)->status);
     }
+
+    // ---------- 订单全额退款的冲销语义 ----------
+
+    private function makeShopAndProduct(float $price = 50, int $stock = 10): array
+    {
+        $branch = \App\Models\Branch::where('tenant_id', $this->tenantId())->firstOrFail();
+        $shop = \App\Models\Shop::create([
+            'tenant_id' => $this->tenantId(), 'branch_id' => $branch->id,
+            'name' => '退款测试商城', 'slug' => 'refund-shop-'.uniqid(),
+            'status' => 'active', 'platform_fee_rate' => 0.05,
+        ]);
+        $product = \App\Models\Product::create([
+            'tenant_id' => $this->tenantId(), 'shop_id' => $shop->id,
+            'name' => '退款测试商品', 'slug' => 'p-refund-'.uniqid(),
+            'price' => $price, 'stock' => $stock, 'sales' => 0, 'status' => 'on_sale',
+        ]);
+        return [$shop, $product];
+    }
+
+    public function test_full_refund_of_order_reverses_order_stock_sales_and_points(): void
+    {
+        $this->seedDemo();
+        $user = $this->memberUser();
+        $svc = app(PaymentService::class);
+        [$shop, $product] = $this->makeShopAndProduct(price: 50, stock: 10);
+
+        // 下单 2 件 + 积分抵现（100 积分抵 1 元），支付成功
+        $order = app(\App\Services\OrderService::class)->placeOrder(
+            $user, null, $shop->id, [['product_id' => $product->id, 'quantity' => 2]],
+            'mock', null, null, usePoints: true
+        );
+        $payment = Payment::where('order_no', $order->payment_order_no)->firstOrFail();
+        $svc->markPaid($payment);
+        $stockAfterSale = $product->fresh()->stock;
+        $pointsAfterSpend = $user->memberProfile()->first()->points;
+        $this->assertEquals(2, $product->fresh()->sales);
+
+        // 全额退款 → 订单转 refunded + 回补库存 + 回滚销量 + 退回抵现积分
+        $refunded = $svc->refund($payment->fresh());
+        $this->assertEquals('refunded', $refunded->status);
+        $this->assertEquals('refunded', $order->fresh()->status, '订单状态随全额退款冲销');
+        $this->assertEquals($stockAfterSale + 2, $product->fresh()->stock, '退款回补库存');
+        $this->assertEquals(0, $product->fresh()->sales, '退款回滚销量');
+        $this->assertEquals($pointsAfterSpend + 100, $user->memberProfile()->first()->points, '退回下单抵现的 100 积分');
+    }
+
+    public function test_wallet_channel_refund_decrements_total_consumed(): void
+    {
+        $this->seedDemo();
+        $user = $this->memberUser();
+        $svc = app(PaymentService::class);
+        app(\App\Services\MembershipService::class)->walletChange($this->tenantId(), $user->id, 100, 'recharge', '预充值');
+        [$shop, $product] = $this->makeShopAndProduct(price: 40, stock: 5);
+
+        $order = app(\App\Services\OrderService::class)->placeOrder(
+            $user, null, $shop->id, [['product_id' => $product->id, 'quantity' => 1]], 'wallet'
+        );
+        $wallet = Wallet::where('tenant_id', $this->tenantId())->where('user_id', $user->id)->first();
+        $this->assertEquals('60.00', (string)$wallet->balance);
+        $this->assertEquals('40.00', (string)$wallet->total_consumed);
+
+        $payment = Payment::where('order_no', $order->payment_order_no)->firstOrFail();
+        $svc->refund($payment->fresh());
+        $wallet->refresh();
+        $this->assertEquals('100.00', (string)$wallet->balance, '退款回余额');
+        $this->assertEquals('0.00', (string)$wallet->total_consumed, '退款同步冲减累计消费统计');
+    }
 }

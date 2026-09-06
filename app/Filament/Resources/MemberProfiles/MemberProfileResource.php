@@ -51,8 +51,11 @@ class MemberProfileResource extends Resource
     {
         return [
             'index' => ListMemberProfiles::route('/'),
-            'create' => CreateMemberProfile::route('/create'),
             'edit' => EditMemberProfile::route('/{record}/edit'),
         ];
     }
+
+    // 会员档案仅由注册/自助流程创建：手建档案绕过钱包初始化与默认等级，
+    // 资金调整走列表页「调整积分/调整余额」Action（经 MembershipService 产生流水）
+    public static function canCreate(): bool { return false; }
 }

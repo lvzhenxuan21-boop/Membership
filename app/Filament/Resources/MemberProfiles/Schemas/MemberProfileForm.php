@@ -38,18 +38,20 @@ class MemberProfileForm
                     ->options(['unknown'=>'未知','male'=>'男','female'=>'女'])
                     ->required()->default('unknown')->label('性别'),
                 TextInput::make('avatar')->label('头像'),
+                // 资金/统计字段只读：只能经「调整积分/调整余额」Action 走 MembershipService 变动，
+                // 手改不会产生流水，会导致账实不符（积分/钱包/流水三处对不上）
                 TextInput::make('points')
-                    ->required()->numeric()->default(0)->label('积分'),
+                    ->numeric()->label('积分')->disabled()->dehydrated(false),
                 TextInput::make('growth')
-                    ->required()->numeric()->default(0)->label('成长值'),
+                    ->numeric()->label('成长值')->disabled()->dehydrated(false),
                 TextInput::make('balance')
-                    ->required()->numeric()->default(0)->label('余额'),
+                    ->numeric()->label('余额')->disabled()->dehydrated(false),
                 TextInput::make('total_orders')
-                    ->required()->numeric()->default(0)->label('订单数'),
+                    ->numeric()->label('订单数')->disabled()->dehydrated(false),
                 TextInput::make('total_spent')
-                    ->required()->numeric()->default(0)->label('累计消费'),
-                DateTimePicker::make('joined_at')->label('入会时间'),
-                DateTimePicker::make('last_active_at')->label('最后活跃'),
+                    ->numeric()->label('累计消费')->disabled()->dehydrated(false),
+                DateTimePicker::make('joined_at')->label('入会时间')->disabled()->dehydrated(false),
+                DateTimePicker::make('last_active_at')->label('最后活跃')->disabled()->dehydrated(false),
                 Select::make('status')
                     ->options(['active'=>'正常','frozen'=>'冻结','cancelled'=>'注销'])
                     ->required()->default('active')->label('状态'),
