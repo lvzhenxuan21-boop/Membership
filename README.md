@@ -155,7 +155,7 @@ app(\App\Services\MembershipService::class)->consumeFeature($subscriptionId, 'FR
 
 > `membership` 写操作与商城下单建议生产环境补 `auth:sanctum`；`mark-paid`/`refund`/`cancel` 已内置鉴权/归属校验。
 > 未配置 STRIPE_SECRET/WECHAT_PAY_* 时相应渠道自动降级 Mock（演示可跑），配置后自动走真实网关。
-> **API 交互文档**：`/docs/api`（OpenAPI 3.1 自动生成，local 环境默认开放，生产环境可用 IP 白名单或按需关闭；scramble 为 dev 依赖，`composer install --no-dev` 的纯生产安装不含此路由）。
+> **API 交互文档**：`/docs/api`（OpenAPI 3.1 自动生成，local 环境默认开放，生产环境可用 IP 白名单或按需关闭；scramble 为 dev 依赖，`composer install --no-dev` 的纯生产安装不含此路由）。本地模式下文档页每次实时分析控制器，**首次打开约 10 秒属正常**；生产使用建议用 `php artisan scramble:export` 导出静态文档。
 
 ---
 
