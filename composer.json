@@ -5,6 +5,9 @@
     "description": "Membership Pro - 可售版 Laravel 13 多租户 SaaS 会员系统 (Filament 5 + Spatie Permission + Soulbscription订阅模型)",
     "keywords": ["laravel", "membership", "saas", "filament", "subscription", "multi-tenant", "spatie-permission"],
     "license": "proprietary",
+    "suggest": {
+        "yansongda/pay": "接入微信支付/支付宝真实下单与退款（见 docs/payment-integration.md）"
+    },
     "require": {
         "php": "^8.3",
         "filament/filament": "^5.7",

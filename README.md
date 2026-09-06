@@ -245,6 +245,8 @@ php artisan memberships:relevel        # 每日 02:10：保级周期重算（不
 
 `User` 已 `Billable`，`AppServiceProvider` 已处理 Cashier 订阅表冲突（本项目 `subscriptions` 保留业务含义，不使用 Cashier 官方迁移）。
 
+> **微信/支付宝完整接入步骤**（SDK 安装、密钥配置、启用下单代码、退款实现、验收清单）见 [`docs/payment-integration.md`](docs/payment-integration.md)。
+
 ---
 
 ## 12. 交付清单

@@ -94,5 +94,13 @@ class MembershipSeeder extends Seeder
         // 商户管理员（可登录后台，用于测试后台管理功能）
         $tenantAdmin = User::firstOrCreate(['email'=>'tenant@demo.com'], ['name'=>'商户管理员','password'=>Hash::make('12345678'),'tenant_id'=>$tenant->id]);
         $tenantAdmin->assignRole('tenant_admin');
+
+        // 上线前必改：弱密码演示账号直接上生产等于裸奔
+        $this->command?->warn('');
+        $this->command?->warn('════════════════════════════════════════════════════════');
+        $this->command?->warn('  ⚠️  演示账号已创建，生产环境务必先改密码再对外开放：');
+        $this->command?->warn('     tenant@demo.com / 12345678   (后台 /admin)');
+        $this->command?->warn('     demo@member.com  / 12345678  (商城会员)');
+        $this->command?->warn('════════════════════════════════════════════════════════');
     }
 }

@@ -40,3 +40,11 @@ Thumbs.db
 
 # Local AI assistant memory
 .workbuddy/
+
+# 开发者内部笔记，不随仓库/交付包发布
+README_MEMBERSHIP.md
+
+# 个人文件，禁止入库
+*-简历.pdf
+*-简历.docx
+*-简历.*
