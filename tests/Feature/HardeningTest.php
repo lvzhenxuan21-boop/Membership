@@ -258,4 +258,35 @@ class HardeningTest extends TestCase
         // path 模式 /shop/{slug}：pending 租户不渲染店铺（落到获客首页）
         $this->get('/shop/'.$tenant->slug)->assertViewIs('landing');
     }
+
+    // ---------- 平台佣金报表 ----------
+
+    public function test_platform_revenue_widget_counts_realized_orders_only(): void
+    {
+        $this->seedDemo();
+        $shop = $this->makeShop();
+        $product = $this->makeProduct($shop, price: 100, stock: 10);
+        $svc = app(PaymentService::class);
+
+        // 已支付订单：200 × 5% = 10 佣金
+        $order1 = app(OrderService::class)->placeOrder(
+            $this->memberUser(), null, $shop->id, [['product_id' => $product->id, 'quantity' => 2]], 'mock'
+        );
+        $svc->markPaid(Payment::where('order_no', $order1->payment_order_no)->firstOrFail());
+
+        // 取消的订单不计入佣金
+        $order2 = app(OrderService::class)->placeOrder(
+            $this->memberUser(), null, $shop->id, [['product_id' => $product->id, 'quantity' => 1]], 'mock'
+        );
+        $svc->cancel(Payment::where('order_no', $order2->payment_order_no)->firstOrFail());
+
+        $widget = app(\App\Filament\Widgets\PlatformRevenue::class);
+        $m = new \ReflectionMethod($widget, 'getStats');
+        $m->setAccessible(true);
+        $stats = $m->invoke($widget);
+
+        $this->assertCount(4, $stats);
+        $this->assertEquals('¥ 10.00', $stats[0]->getValue(), '累计佣金只计已收订单');
+        $this->assertEquals('¥ 200.00', $stats[3]->getValue(), 'GMV 只计已收订单');
+    }
 }

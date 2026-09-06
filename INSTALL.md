@@ -145,6 +145,7 @@ PAYMENT_MOCK_ENABLED=              # 保持为空/false
 - [ ] 部署 scheduler：`* * * * * php /path/artisan schedule:run`（过期单取消/订阅到期/保级降级依赖它）
 - [ ] 配置真实支付渠道密钥（Stripe 完整可用；微信/支付宝需安装 `yansongda/pay` 按代码内注释接入）
 - [ ] `PAYMENT_MOCK_ENABLED` 保持为空/false，防止伪造支付
+- [ ] 配置数据库定时备份（MySQL：crontab mysqldump 并异地保存；SQLite：低峰期直接拷贝 `database/database.sqlite`）
 
 ## 演示数据重置
 

@@ -28,9 +28,7 @@ class TenantProvisioning
      */
     public function provision(string $tenantName, string $slug, ?string $contactName = null, ?User $attachUser = null, ?array $newAdmin = null): array
     {
-        if (!$attachUser && empty($newAdmin['name']) && empty($newAdmin['email'])) {
-            throw new \InvalidArgumentException('必须提供要绑定的用户或新管理员资料');
-        }
+        // 管理员可选：平台管理员可先建租户壳（含总店/默认等级），稍后再绑定管理员账号
 
         return DB::transaction(function () use ($tenantName, $slug, $contactName, $attachUser, $newAdmin) {
             $slug = Str::slug($slug);

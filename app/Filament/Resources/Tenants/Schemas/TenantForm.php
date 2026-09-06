@@ -31,6 +31,22 @@ class TenantForm
                     ->default('active'),
                 Textarea::make('settings')
                     ->columnSpanFull(),
+                // 创建时可选同步创建管理员（否则只建租户壳，稍后可再绑定账号）
+                TextInput::make('admin_name')
+                    ->label('管理员姓名（选填）')
+                    ->visibleOn('create'),
+                TextInput::make('admin_email')
+                    ->email()
+                    ->unique('users', 'email')
+                    ->label('管理员邮箱（选填，填写则同步创建管理员账号）')
+                    ->visibleOn('create'),
+                TextInput::make('admin_password')
+                    ->password()
+                    ->revealable()
+                    ->dehydrated()
+                    ->rule(\Illuminate\Validation\Rules\Password::min(8)->mixedCase()->numbers())
+                    ->label('管理员初始密码（8 位以上，含大小写与数字）')
+                    ->visibleOn('create'),
             ]);
     }
 }

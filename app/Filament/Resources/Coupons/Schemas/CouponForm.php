@@ -39,14 +39,11 @@ class CouponForm
                     ->required()
                     ->numeric()
                     ->default(1),
+                // 发放/使用计数由系统维护（领取/核销/取消自动增减），手改会破坏限领限用配额
                 TextInput::make('issued_count')
-                    ->required()
-                    ->numeric()
-                    ->default(0),
+                    ->numeric()->default(0)->label('已发放')->disabled()->dehydrated(false),
                 TextInput::make('used_count')
-                    ->required()
-                    ->numeric()
-                    ->default(0),
+                    ->numeric()->default(0)->label('已使用')->disabled()->dehydrated(false),
                 DateTimePicker::make('starts_at'),
                 DateTimePicker::make('ends_at'),
                 Toggle::make('is_active')
