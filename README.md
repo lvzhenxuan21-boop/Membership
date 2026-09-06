@@ -57,7 +57,7 @@ app/
   Services/OrderService.php       Web 与 API 共用下单（锁库存/等级折扣/积分抵现）
   Services/Payments/              GatewayInterface + 6 网关 (含 isMockMode 演示降级判定)
   Console/Commands/          payments:cancel-expired / subscriptions:expire / memberships:relevel
-  Filament/Resources/        15 个后台资源 + AdminPanelProvider
+  Filament/Resources/        16 个后台资源（含审计日志可视化）+ AdminPanelProvider
   Http/Controllers/Api/      Membership / Payment / Order / Auth / TenantAuth
   Http/Controllers/Web/      ShopController（获客首页/商城/支付页/开店）
   Http/Middleware/           ResolveTenant（子域名/路径/header 多模式租户解析）
@@ -155,7 +155,7 @@ app(\App\Services\MembershipService::class)->consumeFeature($subscriptionId, 'FR
 
 > `membership` 写操作与商城下单建议生产环境补 `auth:sanctum`；`mark-paid`/`refund`/`cancel` 已内置鉴权/归属校验。
 > 未配置 STRIPE_SECRET/WECHAT_PAY_* 时相应渠道自动降级 Mock（演示可跑），配置后自动走真实网关。
-> **API 交互文档**：`/docs/api`（OpenAPI 3.1 自动生成，local 环境默认开放，生产环境可用 IP 白名单或按需关闭）。
+> **API 交互文档**：`/docs/api`（OpenAPI 3.1 自动生成，local 环境默认开放，生产环境可用 IP 白名单或按需关闭；scramble 为 dev 依赖，`composer install --no-dev` 的纯生产安装不含此路由）。
 
 ---
 
@@ -175,7 +175,7 @@ app(\App\Services\MembershipService::class)->consumeFeature($subscriptionId, 'FR
 
 访问 `/admin`，15 个 Resources 按导航分组：
 
-- **系统管理:** Tenants, Branches
+- **系统管理:** Tenants, Branches, ActivityLogs（审计日志，只读）
 - **电商管理:** Shops, Products, Orders
 - **会员配置:** MembershipLevels, MembershipPlans, Features, Coupons
 - **会员运营:** MemberProfiles, Subscriptions, PointLedgers, Wallets, Payments, CheckIns

@@ -17,7 +17,10 @@ class ActivityLogsTable
                 TextColumn::make('user.name')->label('操作对象用户')->placeholder('—'),
                 TextColumn::make('action')->badge()->label('事件')->searchable(),
                 TextColumn::make('auditable_type')->label('关联对象')->formatStateUsing(fn ($state, $record) => $state ? class_basename($state).'#'.$record->auditable_id : '—')->toggleable(),
-                TextColumn::make('new_values')->label('内容')->limit(60)->toggleable(),
+                TextColumn::make('new_values')
+                    ->label('内容')
+                    ->formatStateUsing(fn ($state) => filled($state) ? mb_substr(json_encode($state, JSON_UNESCAPED_UNICODE), 0, 80) : '—')
+                    ->toggleable(),
                 TextColumn::make('ip')->label('IP')->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([])

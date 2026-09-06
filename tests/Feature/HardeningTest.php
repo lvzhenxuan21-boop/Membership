@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Coupon;
 use App\Models\MemberProfile;
+use App\Models\ActivityLog;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Product;
@@ -288,6 +289,27 @@ class HardeningTest extends TestCase
         $this->assertCount(4, $stats);
         $this->assertEquals('¥ 10.00', $stats[0]->getValue(), '累计佣金只计已收订单');
         $this->assertEquals('¥ 200.00', $stats[3]->getValue(), 'GMV 只计已收订单');
+    }
+
+    // ---------- 审计日志后台可视化 ----------
+
+    public function test_audit_log_page_renders_for_tenant_admin(): void
+    {
+        $this->seedDemo();
+        ActivityLog::create([
+            'tenant_id' => $this->tenantId(),
+            'user_id' => $this->memberUser()->id,
+            'action' => 'membership.relevel',
+            'auditable_type' => MemberProfile::class,
+            'auditable_id' => 1,
+            'new_values' => ['from' => '金卡', 'to' => '普通会员', 'period_growth' => 0],
+        ]);
+
+        $admin = User::where('email', 'tenant@demo.com')->firstOrFail();
+        $this->actingAs($admin)
+            ->get('/admin/activity-logs')
+            ->assertStatus(200)
+            ->assertSee('membership.relevel');
     }
 
     // ---------- 安全响应头 ----------
